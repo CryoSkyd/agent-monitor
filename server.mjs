@@ -165,8 +165,9 @@ const server=createServer(async (request,response)=>{
  const name=['/','/agents.html'].includes(url.pathname)?'index.html':url.pathname.slice(1);
  const path=join(here,'public',name);
  if(!/^[\w.-]+$/.test(name)||!existsSync(path)){response.writeHead(404);response.end('Not found');return;}
- response.writeHead(200,{'content-type':TYPES[extname(path)]??'application/octet-stream','cache-control':'no-cache','x-robots-tag':'noindex'});
- response.end(readFileSync(path));
+ // A proxy or browser in between may keep the script and styles whatever it is told, so each version asks for them under a new address.
+ response.writeHead(200,{'content-type':TYPES[extname(path)]??'application/octet-stream','cache-control':'no-store','x-robots-tag':'noindex'});
+ response.end(name==='index.html'?readFileSync(path,'utf8').replace(/(href|src)="(style.css|app.js)"/g,`$1="$2?v=${VERSION}"`):readFileSync(path));
 });
 // Loopback only: the page shows prompts and command lines from local transcripts. A tunnel can relay to it, behind the password.
 let port=config.port;

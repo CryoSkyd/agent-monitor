@@ -1,6 +1,6 @@
 {
   "name": "agent-monitor",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "license": "MIT",
   "type": "module",
   "description": "Live local dashboard for coding agents (Claude Code, Codex) working a task board.",
