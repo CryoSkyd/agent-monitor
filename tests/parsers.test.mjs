@@ -13,7 +13,7 @@ import {makePricer} from '../lib/prices.mjs';
 import {parseCard} from '../lib/cards.mjs';
 import {LimitHistory} from '../lib/forecast.mjs';
 import {splitDiff} from '../lib/github.mjs';
-import {ClaudeRun,CodexRun,claudeWindow} from '../lib/runs.mjs';
+import {ClaudeRun,CodexRun,TOOL_STALE,claudeWindow} from '../lib/runs.mjs';
 import {apply,plan} from '../lib/setup.mjs';
 import {CATS} from '../lib/timeline.mjs';
 
@@ -224,4 +224,31 @@ test('a name given on the page replaces the automatic one, survives a restart, a
  assert.deepEqual(shown(new Names(file)),[['Night shift lead','auto a'],['auto c',undefined]]);
  assert.equal(names.set('a','   '),'');
  assert.deepEqual(shown(new Names(file)),[['auto a',undefined],['auto c',undefined]]);
+});
+
+test('an unattended Codex run may stay silent inside a command only as long as that command can wait; other runs keep the long allowance',()=>{
+ const codex=(originator,input)=>{
+  const run=new CodexRun(transcript([
+   {timestamp:at(0),type:'session_meta',payload:{id:'a',session_id:'a',cwd:'/repo',originator,source:'exec',timestamp:at(0)}},
+   {timestamp:at(1),type:'response_item',payload:{type:'message',role:'user',content:[{type:'input_text',text:'act as Coder for T-1'}]}},
+   {timestamp:at(2),type:'response_item',payload:{type:'custom_tool_call',call_id:'c1',name:'exec',input}},
+  ]),shared(),{account:'codex'});
+  run.poll();
+  return run.toolAllowance();
+ };
+ const table=[
+  ['codex_exec','text(await tools.exec_command({cmd:"rg x"}))',120_000],
+  ['codex_exec','// @exec: {"yield_time_ms": 60000} text(await tools.write_stdin({session_id:1,yield_time_ms:50000}))',120_000],
+  ['codex_exec','text(await tools.exec_command({cmd:"npm test",yield_time_ms:300000}))',360_000],
+  ['codex_exec','{"duration_ms":50000}',120_000],
+  ['codex_exec','text(await tools.exec_command({cmd:"x",timeout_ms:99999999}))',TOOL_STALE],
+  ['codex_cli','text(await tools.exec_command({cmd:"rg x"}))',TOOL_STALE],
+ ];
+ for(const [originator,input,allowance] of table)assert.equal(codex(originator,input),allowance,`${originator} ${input}`);
+ const claude=new ClaudeRun(transcript([
+  {type:'user',timestamp:at(0),message:{role:'user',content:'go'}},
+  {type:'assistant',timestamp:at(5),message:{id:'m1',model:'model-a',stop_reason:'tool_use',content:[{type:'tool_use',id:'t1',name:'Bash',input:{command:'npm test',timeout:60000}}]}},
+ ]),shared(),{id:'s'});
+ claude.poll();
+ assert.equal(claude.toolAllowance(),TOOL_STALE);
 });

@@ -194,6 +194,7 @@ The page shows prompts, commands, tool output and diffs. Prefer Cloudflare Acces
 
 - Activity is inferred from transcript events. "Thinking" means the model is generating or the agent is waiting on the API; a tool call is "running" until its result is written.
 - A run with no new output for 10 minutes while thinking, or 2 hours inside a tool call, is shown as stopped.
+- An unattended Codex run is shown as stopped much sooner when it is inside a command: one minute past the wait the command names, or after two minutes when it names none. Codex commands hand control back after that wait and leave long work running in the background, so a command still open past it means the agent was killed. Claude calls and interactive Codex sessions keep the two hours, because they can be waiting for an approval or a subagent.
 - CPU is for the whole machine, not per agent.
 - Cost is an estimate at API list prices, shown as a tooltip on token counts. It is not what a subscription plan charges. Models with no price set show no estimate; add them under `prices`.
 - Claude usage limits are not in the transcripts. They appear once the status line helper is installed (below).

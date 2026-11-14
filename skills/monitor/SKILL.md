@@ -60,5 +60,5 @@ That file is the user's own configuration: propose the change and make it only w
 
 - **A run is under Sessions, not its task**: its prompt or description names no known card id. See the contract.
 - **Claimed, no agent**: the card says claimed and no live transcript names it. The agent ended, or runs somewhere with no local transcript.
-- **Stopped responding**: no transcript output for 10 minutes while thinking, or 2 hours inside one tool call.
+- **Stopped responding**: no transcript output for 10 minutes while thinking, or 2 hours inside one tool call. An unattended Codex run inside a command is marked after about two minutes, since its commands always hand back within their stated wait.
 - **No pull request data**: `gh` is missing or signed out; phases then come from cards and transcripts alone.
