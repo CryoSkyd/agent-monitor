@@ -2,6 +2,10 @@
 
 A live local dashboard for coding agents working a task board. It reads what the agents already write to disk and shows, per task, who is on it, what they are doing right now, a timeline of the last hours, tokens and context use, plus machine CPU, memory and account usage limits.
 
+![The dashboard: tiles for agents, machine load, tokens and usage limits above a timeline per task](docs/screenshots/overview.png)
+
+The screenshots show invented data from `node tools/demo.mjs`.
+
 Read-only, no dependencies, Node 22 or newer. It listens on 127.0.0.1 only, because the page shows prompts, commands and tool output from local transcripts. Reaching it from another device needs a tunnel and a sign-in (Remote access, below).
 
 ## Run
@@ -11,6 +15,8 @@ node server.mjs <project folder | config.json> [--port 4599] [--hours 24] [--no-
 ```
 
 For example `node server.mjs ~/code/my-project`, then open http://127.0.0.1:4599. One server watches one project; run a second one on another port for another project.
+
+To look around before pointing it at a project, run `node tools/demo.mjs`. It writes an invented project to a temporary folder and serves the dashboard on it at port 4600.
 
 A project folder may hold its own `.agent-monitor.json`; it is read when the folder is the argument. Config files kept in `projects/` here are ignored by git, so personal paths stay out of the repository. If the port is taken the server moves to the next free one and prints it.
 
@@ -95,6 +101,10 @@ Transcripts are tailed: each poll (every 2 seconds) stats the known files and pa
 Claude transcripts do not name the context window. The monitor assumes 500K tokens, or 1M once a request has used more than 500K. For Codex, a shell exit code of 1 is not counted as a failure, because search commands return it for "no match".
 
 ## Tool calls
+
+![An expanded task with its time split, cost and a table of tool statistics](docs/screenshots/task.png)
+
+![The side panel showing one tool call with its input and output](docs/screenshots/call.png)
 
 - **Statistics**: expanding a row lists each tool with its calls, failures, median and 95th percentile duration, and total time. Shell commands are grouped by the program they run, such as `$ git`.
 - **Detail**: clicking a timeline opens the tool call at that moment, with its input and output and buttons to step to the previous and next call. The text is read from the transcript only when opened, and is cut at 40,000 characters.
