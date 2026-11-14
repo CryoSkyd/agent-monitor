@@ -1,6 +1,7 @@
 // Usage: node tools/demo.mjs [--theme theme.json] [--port 4600]
 // Serves the dashboard on an invented project whose agents keep working: transcripts and task cards are written to a temporary folder as time passes.
 // A theme file names the project and its tasks: {"name": "my-project", "tasks": [{"title": "Add cart totals endpoint", "area": "cart"}]}
+// It may also rename the two roles: {"roles": {"worker": "pilot", "checker": "mission-reviewer"}}
 import {spawn} from 'node:child_process';
 import {appendFileSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -18,6 +19,9 @@ const args=process.argv.slice(2),flag=name=>args.includes(name)?args[args.indexO
 const given=flag('--theme')?JSON.parse(readFileSync(flag('--theme'),'utf8')):DEFAULT;
 const word=(text,fallback)=>String(text??'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||fallback;
 const theme={name:word(given.name,'demo'),tasks:(given.tasks??[]).filter(task=>task?.title).map(task=>({title:String(task.title).replace(/\s+/g,' '),area:word(task.area,'core')}))};
+// The dashboard shows a task as in review while a live run's role contains "review", so the checker's name keeps that word.
+const worker=word(given.roles?.worker,'coder'),checker=/review/.test(word(given.roles?.checker,''))?word(given.roles.checker):'reviewer';
+const title=name=>name[0].toUpperCase()+name.slice(1);
 if(theme.tasks.length<4){console.error('A theme needs a name and at least 4 tasks, each with a title and an area.');process.exit(2);}
 
 const root=join(tmpdir(),'agent-monitor-demo'),home=join(root,'home'),project=join(root,theme.name);
@@ -126,11 +130,11 @@ function startAgent(card,role,now){
  const end=now+(review?between(6,14):between(18,45))*MIN;
  if(!review){
   if(card.status==='changes-requested')card.round++;
-  Object.assign(card,{status:'claimed',agent:codex?'codex':'coder',branch:`task/${card.id}-${card.area}`});
+  Object.assign(card,{status:'claimed',agent:codex?'codex':worker,branch:`task/${card.id}-${card.area}`});
   saveCard(card);
  }
  const round=card.round>1&&!review?`, fix round ${card.round}`:'';
- const prompt=review?`Act as Reviewer for PR #${card.pr} (${card.id})`:`Act as Coder for ${card.id}${round}`;
+ const prompt=review?`Act as ${title(checker)} for PR #${card.pr} (${card.id})`:`Act as ${title(worker)} for ${card.id}${round}`;
  let writer,meta=null;
  if(codex)writer=new Writer(join(home,'.codex','sessions','2026','01','01',`rollout-${number}.jsonl`),codexLines({start:now,end,prompt:prompt.replace('Act','act'),area:card.area,name:`demo-${number}`}));
  else{
@@ -138,7 +142,7 @@ function startAgent(card,role,now){
   // Now and then an agent gets stuck rerunning a failing test, which is what the dashboard's warnings are for.
   const loop=!review&&Math.random()<.15?[['Bash',{command:`npm test -- ${card.area}`},40,1]]:work(card.area,card.round>1?.5:.1);
   writer=new Writer(path,claudeLines({start:now,end,prompt,model:'claude-opus-5-5',loop,context:between(40_000,250_000)}));
-  meta={path:path.replace(/\.jsonl$/,'.meta.json'),description:review?`Reviewer ${card.id} PR ${card.pr}`:`Coder ${card.id} ${card.area}${round}`,agentType:role};
+  meta={path:path.replace(/\.jsonl$/,'.meta.json'),description:review?`${title(checker)} ${card.id} PR ${card.pr}`:`${title(worker)} ${card.id} ${card.area}${round}`,agentType:review?checker:worker};
   save(meta.path,JSON.stringify({...meta,path:undefined,finished:false}));
  }
  active.push({card,role,writer,meta});
@@ -171,7 +175,7 @@ function tick(now){
 
 const started=Date.now(),history=3*HOUR;
 architect=new Writer(`${session}.jsonl`,claudeLines({start:started-history,end:Infinity,prompt:`Plan the next wave of ${theme.name} work and dispatch it`,model:'claude-fable-5-2',context:120_000,
- loop:[['Glob',{pattern:'tasks/*.md'},2],['Agent',{description:'Coder for the next ready task'},()=>between(600,1500)],['Bash',{command:'git status'},2],['Agent',{description:'Reviewer for the open pull request'},()=>between(400,900)]]}));
+ loop:[['Glob',{pattern:'tasks/*.md'},2],['Agent',{description:`${title(worker)} for the next ready task`},()=>between(600,1500)],['Bash',{command:'git status'},2],['Agent',{description:`${title(checker)} for the open pull request`},()=>between(400,900)]]}));
 for(let i=0;i<6;i++)addCard('ready');
 for(let t=started-history;t<started;t+=15_000)tick(t);
 setInterval(()=>tick(Date.now()),2000);

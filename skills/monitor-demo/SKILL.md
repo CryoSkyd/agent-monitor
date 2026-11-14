@@ -21,6 +21,7 @@ description: Run the agent-monitor dashboard on invented, continuously generated
 
    - `name`: a plausible software project about the subject, lowercase words joined by dashes.
    - `tasks`: 12 to 16 of them. Each `title` is a short imperative engineering task that clearly belongs to the subject, under 50 characters. Each `area` is one lowercase word, used in invented file paths and branch names; make them all different.
+   - Optional `"roles": {"worker": "pilot", "checker": "mission-reviewer"}` renames the two agent roles when the subject is not software, such as missions or a kitchen. The checker's name must contain "review". Titles then describe that world's jobs, not engineering tasks.
    - Mix features, fixes and chores. No real people, no private information, nothing from the user's own projects.
 3. Start it in the background so it outlives the turn:
 
@@ -35,6 +36,7 @@ description: Run the agent-monitor dashboard on invented, continuously generated
 - About three hours of invented history at once, then live activity: agents start, call tools, finish, hand over to reviewers, and new tasks keep arriving.
 - Some agents are made to get stuck on a failing test, so the warnings have something to show.
 - Usage limits rise and reset on a loop. CPU and memory are the real machine's.
+- Tool calls stay software-like (tests, builds, edits) whatever the subject.
 - No pull request data: the demo has no GitHub repository, so PR numbers do not open.
 
 It stops when the session that started it ends. Each start replaces the previous demo's data.

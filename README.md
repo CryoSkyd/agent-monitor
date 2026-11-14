@@ -81,7 +81,7 @@ A theme file sets the project name and task topics:
 {"name": "my-project", "tasks": [{"title": "Add cart totals endpoint", "area": "cart"}]}
 ```
 
-It needs at least four tasks. In Claude Code, `/monitor-demo <subject>` has Claude write a theme about the subject first, so `/monitor-demo pokemon` gives a board of Pokémon tasks.
+It needs at least four tasks. An optional `"roles": {"worker": "pilot", "checker": "mission-reviewer"}` renames the two agent roles; the checker's name must contain "review". In Claude Code, `/monitor-demo <subject>` has Claude write a theme about the subject first, so `/monitor-demo pokemon` gives a board of Pokémon tasks.
 
 ## What it reads
 
