@@ -142,3 +142,7 @@ The file is refreshed while a terminal `claude` session is open; the limits are 
 ```
 node --test
 ```
+
+## License
+
+MIT. Free to use, copy, change and share.
