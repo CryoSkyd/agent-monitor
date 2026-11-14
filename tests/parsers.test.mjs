@@ -10,7 +10,7 @@ import {makePricer} from '../lib/prices.mjs';
 import {parseCard} from '../lib/cards.mjs';
 import {LimitHistory} from '../lib/forecast.mjs';
 import {splitDiff} from '../lib/github.mjs';
-import {ClaudeRun,CodexRun} from '../lib/runs.mjs';
+import {ClaudeRun,CodexRun,claudeWindow} from '../lib/runs.mjs';
 import {apply,plan} from '../lib/setup.mjs';
 import {CATS} from '../lib/timeline.mjs';
 
@@ -64,6 +64,12 @@ test('a Codex exec transcript ends at task_complete and reports the account limi
  assert.equal(run.prompt,'act as Reviewer for PR #7');
  assert.equal(run.unpriced,true);
  assert.deepEqual(state.limits.get('codex').windows.map(window=>[window.label,window.used]),[['week',42]]);
+});
+
+test('a Claude context window is 1M on current models, and on older ones only once a request has outgrown 200K',()=>{
+ const table=[['claude-fable-5-2',10,1e6],['claude-opus-5-5',10,1e6],['claude-opus-4-7',10,1e6],['claude-sonnet-5',10,1e6],['claude-haiku-5-5',10,1e6],
+  ['claude-opus-4-6',10,2e5],['claude-sonnet-4-6',250_000,1e6],['claude-haiku-4-5',10,2e5],['',10,2e5]];
+ for(const [model,used,size] of table)assert.equal(claudeWindow(model,used),size,model);
 });
 
 test('commands are classified by what they do',()=>{

@@ -98,7 +98,7 @@ Transcripts are tailed: each poll (every 2 seconds) stats the known files and pa
 - **Whole-task rollup**: expanding a task shows its runs, reviews, working time, tokens and estimated cost across every loaded run.
 - **Alerts**: the Alerts switch in the header raises a browser notification, and optionally a sound, when a task starts needing you, an agent stops responding or trips a warning, or a limit passes `limitWarn` or is forecast to fill early. Alerts also show on the page, so they work when notifications are blocked.
 
-Claude transcripts do not name the context window. The monitor assumes 500K tokens, or 1M once a request has used more than 500K. For Codex, a shell exit code of 1 is not counted as a failure, because search commands return it for "no match".
+Claude transcripts do not name the context window. The monitor uses the sizes Anthropic publishes for Claude Code: 1M tokens for Fable, Opus 4.7 and later, Sonnet 5 and later, and Haiku 5.5. Older models count as 200K, or 1M once a request has used more than 200K, because their 1M variant is opt-in. For Codex, a shell exit code of 1 is not counted as a failure, because search commands return it for "no match".
 
 ## Tool calls
 
