@@ -46,7 +46,7 @@ claude plugin update agent-monitor@agent-monitor
 
 Or inside Claude Code: run `/plugin`, open the **Marketplaces** tab, select agent-monitor and choose **Update marketplace**. The same screen has **Enable auto-update**, which is off by default for marketplaces like this one.
 
-Then restart Claude Code, or run `/reload-plugins`, to load the new version. A dashboard that is already running keeps the old code until it is stopped and started again.
+Then restart Claude Code, or run `/reload-plugins`, to load the new version. A dashboard that is already running keeps the old code until it is stopped and started again. A page left open then loads itself again when it sees the new version.
 
 ## Setting up a project
 
@@ -175,7 +175,7 @@ The page then tags each agent with its machine and adds up tokens and cost. The 
 - A sharing machine answers other computers only with the secret, and only for its summary and tool call details. The page itself stays local to each machine.
 - The secret is kept in a file, not passed on the command line, because command lines end up in transcripts and so on this page.
 - Traffic between the machines is not encrypted, so use this on a network you trust.
-- The page header shows the version running on the machine you look at. Hovering a machine in the CPU legend shows the version it runs, which helps when one was left on an older one.
+- The foot of the page shows the version running on the machine you look at. Hovering a machine in the CPU legend shows the version it runs, which helps when one was left on an older one.
 - A machine that stops answering shows as unreachable and its agents drop out after 15 seconds.
 - Each machine reads its own checkout's task cards; the page uses the cards of the machine you look at. Clocks that disagree shift the other machine's timelines by that much.
 

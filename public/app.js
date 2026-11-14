@@ -6,7 +6,7 @@ const MARK_LABEL={pr:'PR opened',merge:'PR merged',verdict:'Review comment',push
 const IN_FLIGHT=['coding','review','awaiting-review','changes','claimed'];
 const LANE=9,LANE_GAP=3,PAD=4,CTX_WARN=80,ALERT_REPEAT=1800;
 
-let renaming=false;
+let renaming=false,loadedVersion;
 let snap=null,sys=null,machines=null,peerHistory={},cpuHistory=[],windowHours=Number(localStorage.getItem('window'))||3,colors={};
 const expanded=new Set();
 let panel=null;
@@ -419,6 +419,9 @@ function render(){
  if(!colors.cats)readColors();
  const v=view();
  $('project').textContent=snap.project.name;
+ // A page left open across a server update would keep running the old page code, so it loads itself again.
+ loadedVersion??=snap.version;
+ if(snap.version&&snap.version!==loadedVersion&&!renaming){location.reload();return;}
  $('version').textContent=snap.version?`v${snap.version}`:'';
  document.title=`${v.runs.filter(run=>run.status==='working').length} running · ${snap.project.name}`;
  renderTiles(v);renderLegend();renderRows(v);renderLists();renderPanelHead();fillTools();checkAlerts();
