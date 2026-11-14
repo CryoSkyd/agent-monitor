@@ -6,7 +6,7 @@ A live local dashboard for coding agents working a task board. It reads what the
 
 The screenshots show invented data from `node tools/demo.mjs`.
 
-Read-only, no dependencies, Node 22 or newer. It listens on 127.0.0.1 only, because the page shows prompts, commands and tool output from local transcripts. Reaching it from another device needs a tunnel and a sign-in (Remote access, below).
+It never writes to your agents or their transcripts. No dependencies, Node 22 or newer. It listens on 127.0.0.1 only, because the page shows prompts, commands and tool output from local transcripts. Reaching it from another device needs a tunnel and a sign-in (Remote access, below).
 
 ## Run
 
@@ -115,6 +115,7 @@ A JSON file; only `project` is required.
 | `share` | false | Let other machines on the local network read this one's summary (Several machines, below) |
 | `peers` | | Other machines to show: `["http://192.168.1.20:4599"]`, or `[{"name": "den", "url": "..."}]` to choose the name |
 | `secretFile` | `~/.agent-monitor/peer-secret` | The secret the machines share |
+| `namesFile` | `~/.agent-monitor/names.json` | Names given to sessions on the page |
 | `passwordFile` | `~/.agent-monitor/password` | Remote-access password file |
 | `accessFile` | `~/.agent-monitor/access.json` | Cloudflare Access settings file |
 
@@ -133,6 +134,16 @@ Transcripts are tailed: each poll (every 2 seconds) stats the known files and pa
 - **Alerts**: the Alerts switch in the header raises a browser notification, and optionally a sound, when a task starts needing you, an agent stops responding or trips a warning, or a limit passes `limitWarn` or is forecast to fill early. Alerts also show on the page, so they work when notifications are blocked.
 
 Claude transcripts do not name the context window. The monitor uses the sizes Anthropic publishes for Claude Code: 1M tokens for Fable, Opus 4.7 and later, Sonnet 5 and later, and Haiku 5.5. Older models count as 200K, or 1M once a request has used more than 200K, because their 1M variant is opt-in. For Codex, a shell exit code of 1 is not counted as a failure, because search commands return it for "no match".
+
+## Session names
+
+A session is shown under the name in its transcript. One without a name gets the first line of what it was asked.
+
+To give one your own name, use the pencil beside it in the Sessions list: type, then press Enter. Escape cancels, and saving an empty name brings the automatic one back. Task rows have no pencil, because their title opens the task card.
+
+- Names are kept in `~/.agent-monitor/names.json` (`namesFile` in the config) on the machine whose page you used. Transcripts and agents are never written to; this is the only thing the page can change.
+- A name given here wins over the one in the transcript.
+- With several machines, a name you give to another machine's session is stored on the machine you look at.
 
 ## Tool calls
 
@@ -161,6 +172,7 @@ The page then tags each agent with its machine and adds up tokens and cost. The 
 - A sharing machine answers other computers only with the secret, and only for its summary and tool call details. The page itself stays local to each machine.
 - The secret is kept in a file, not passed on the command line, because command lines end up in transcripts and so on this page.
 - Traffic between the machines is not encrypted, so use this on a network you trust.
+- The page header shows the version running on the machine you look at. Hovering a machine in the CPU legend shows the version it runs, which helps when one was left on an older one.
 - A machine that stops answering shows as unreachable and its agents drop out after 15 seconds.
 - Each machine reads its own checkout's task cards; the page uses the cards of the machine you look at. Clocks that disagree shift the other machine's timelines by that much.
 

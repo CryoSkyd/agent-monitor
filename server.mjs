@@ -8,10 +8,13 @@ import {fileURLToPath} from 'node:url';
 import {ensureSecret,isLoopback,makeGate,makeSecretCheck,readAccess,readPassword,readSecret} from './lib/auth.mjs';
 import {Peers,SECRET_HEADER,splitPeerId} from './lib/peers.mjs';
 import {Monitor} from './lib/monitor.mjs';
+import {Names} from './lib/names.mjs';
 import {PullRequests} from './lib/github.mjs';
 import {SystemMonitor} from './lib/system.mjs';
 
 const here=dirname(fileURLToPath(import.meta.url));
+let VERSION='';
+try{VERSION=JSON.parse(readFileSync(join(here,'.claude-plugin','plugin.json'),'utf8')).version??'';}catch{}
 const args=process.argv.slice(2);
 const flag=name=>args.includes(name)?args[args.indexOf(name)+1]:undefined;
 const target=args.find((arg,i)=>!arg.startsWith('--')&&!['--port','--hours','--peer'].includes(args[i-1]));
@@ -43,8 +46,11 @@ if(sharing?.created)console.log(`Created the shared secret in ${sharing.file}. C
 const peers=new Peers(config.peers,{secret});
 const machinesText=withHistory=>JSON.stringify({local:config.machine,peers:peers.machines(withHistory)});
 let version=0,lastSample=null;
+const names=new Names(config.namesFile);
 function rebuild(now){
  const snapshot=monitor.snapshot(now,pulls.list,peers.size?{machine:config.machine,...peers.remote()}:null);
+ snapshot.version=VERSION;
+ names.apply(snapshot.runs);
  const text=JSON.stringify(snapshot);
  lastBuild=now;dirty=false;
  // The clock field changes every build; compare the rest so idle periods send nothing.
@@ -106,8 +112,22 @@ const server=createServer(async (request,response)=>{
   if(peers.size)send(response,'machines',machinesText(true));
   return;
  }
+ if(url.pathname==='/api/name'){
+  // A JSON body from the page itself: another site cannot send one to this address without the browser asking first.
+  const origin=request.headers.origin;
+  if(request.method!=='POST'||!/^application\/json\b/.test(request.headers['content-type']??'')||(origin&&new URL(origin).host!==request.headers.host)){json(response,400,{error:'Not accepted'});return;}
+  let body='';
+  for await(const chunk of request){body+=chunk;if(body.length>2000)break;}
+  let given;
+  try{given=JSON.parse(body);}catch{}
+  if(typeof given?.run!=='string'||!given.run||given.run.length>300||typeof given.name!=='string'){json(response,400,{error:'Not accepted'});return;}
+  const name=names.set(given.run,given.name);
+  rebuild(Date.now());
+  json(response,200,{name});
+  return;
+ }
  if(url.pathname==='/api/peer'){
-  const have=`${started}-${version}`,body={machine:config.machine,have,sys:lastSample};
+  const have=`${started}-${version}`,body={machine:config.machine,version:VERSION,have,sys:lastSample};
   if(url.searchParams.get('have')!==have)Object.assign(body,monitor.own);
   const text=JSON.stringify(body);
   if(/\bgzip\b/.test(request.headers['accept-encoding']??'')){response.writeHead(200,{'content-type':'application/json','content-encoding':'gzip'});response.end(gzipSync(text));}
@@ -134,7 +154,7 @@ const server=createServer(async (request,response)=>{
   else pulls.detail(number).then(detail=>reply(200,detail),error=>reply(502,{error:String(error.message).split('\n')[0]}));
   return;
  }
- if(url.pathname==='/api/project'){response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({name:config.name,path:config.project,machine:config.machine,share:config.share,peers:config.peers.length}));return;}
+ if(url.pathname==='/api/project'){response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({name:config.name,path:config.project,version:VERSION,machine:config.machine,share:config.share,peers:config.peers.length}));return;}
  if(url.pathname==='/api/snapshot'){response.writeHead(200,{'content-type':'application/json'});response.end(snapshotText);return;}
  const name=['/','/agents.html'].includes(url.pathname)?'index.html':url.pathname.slice(1);
  const path=join(here,'public',name);
@@ -152,6 +172,6 @@ server.on('error',error=>{
  server.listen(++port,host);
 });
 const lanAddresses=()=>Object.values(networkInterfaces()).flat().filter(address=>address.family==='IPv4'&&!address.internal).map(address=>address.address);
-server.on('listening',()=>console.log(`agent-monitor for ${config.name}: http://127.0.0.1:${port}${host==='0.0.0.0'?`\nShared with other machines on this network as "${config.machine}": ${lanAddresses().map(address=>`http://${address}:${port}`).join(', ')||`port ${port}`}`:''}${config.peers.length?`\nAlso showing: ${config.peers.map(peer=>peer.url??peer).join(', ')}`:''}\nRemote access through a tunnel: ${[access&&'Cloudflare Access sign-in',password&&'the password'].filter(Boolean).join(' or ')||'refused, nothing set up'}`));
+server.on('listening',()=>console.log(`agent-monitor ${VERSION} for ${config.name}: http://127.0.0.1:${port}${host==='0.0.0.0'?`\nShared with other machines on this network as "${config.machine}": ${lanAddresses().map(address=>`http://${address}:${port}`).join(', ')||`port ${port}`}`:''}${config.peers.length?`\nAlso showing: ${config.peers.map(peer=>peer.url??peer).join(', ')}`:''}\nRemote access through a tunnel: ${[access&&'Cloudflare Access sign-in',password&&'the password'].filter(Boolean).join(' or ')||'refused, nothing set up'}`));
 server.listen(port,host);
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{system.stop();pulls.stop();process.exit(0);});

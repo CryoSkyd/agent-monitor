@@ -7,6 +7,7 @@ import {generateKeyPairSync,sign} from 'node:crypto';
 import {ensureSecret,isLoopback,makeGate,makeSecretCheck} from '../lib/auth.mjs';
 import {Peers,mergeBurn,mergeLimits} from '../lib/peers.mjs';
 import {promptName} from '../lib/monitor.mjs';
+import {Names} from '../lib/names.mjs';
 import {makeClassifier} from '../lib/classify.mjs';
 import {makePricer} from '../lib/prices.mjs';
 import {parseCard} from '../lib/cards.mjs';
@@ -191,14 +192,14 @@ test('runs from another machine are tagged and addressed by machine, kept while 
  assert.equal(await peers.poll(),true);
  assert.deepEqual(asked[0],['http://10.0.0.2:4599/api/peer?have=','s']);
  assert.deepEqual(peers.remote().views,[{id:'@den/a',parent:null,machine:'den'},{id:'@den/b',parent:'@den/a',machine:'den'}]);
- assert.deepEqual(peers.machines(),[{name:'den',ok:true,error:'',cpu:12}]);
+ assert.deepEqual(peers.machines(),[{name:'den',version:'',ok:true,error:'',cpu:12}]);
  reply={machine:'den',have:'1-1',sys:{cpu:40}};
  assert.equal(await peers.poll(),false);
  assert.equal(asked[1][0],'http://10.0.0.2:4599/api/peer?have=1-1');
  assert.deepEqual([peers.remote().views.length,peers.machines()[0].cpu],[2,40]);
  reply=null;clock=20_000;
  assert.equal(await peers.poll(),true);
- assert.deepEqual([peers.remote().views,peers.machines()],[[],[{name:'den',ok:false,error:'offline'}]]);
+ assert.deepEqual([peers.remote().views,peers.machines()],[[],[{name:'den',version:'',ok:false,error:'offline'}]]);
 });
 
 test('machines on the same accounts merge to the newest limit reading, and their token use adds up',()=>{
@@ -211,4 +212,16 @@ test('a run with no name is named after the first line it was asked, without mar
  const table=[['Check the build\nthen report','Check the build'],['<command-name>/review</command-name>\n\n  Review PR 12  ','/review'],['<tag></tag>\r\n\r\nSecond line','Second line'],['',''],[undefined,'']];
  for(const [prompt,name] of table)assert.equal(promptName(prompt),name);
  assert.equal(promptName('x'.repeat(200)).length,70);
+});
+
+test('a name given on the page replaces the automatic one, survives a restart, and an empty name brings the automatic one back',()=>{
+ const file=join(mkdtempSync(join(tmpdir(),'monitor-names-')),'nested','names.json');
+ const names=new Names(file);
+ assert.equal(names.set('a','  Night   shift '+String.fromCharCode(10)+'lead  '),'Night shift lead');
+ assert.equal(names.set('b','x'.repeat(200)).length,80);
+ const runs=()=>[{id:'a',title:'auto a'},{id:'c',title:'auto c'}];
+ const shown=list=>{list.apply(list.runs=runs());return list.runs.map(run=>[run.title,run.auto]);};
+ assert.deepEqual(shown(new Names(file)),[['Night shift lead','auto a'],['auto c',undefined]]);
+ assert.equal(names.set('a','   '),'');
+ assert.deepEqual(shown(new Names(file)),[['auto a',undefined],['auto c',undefined]]);
 });
