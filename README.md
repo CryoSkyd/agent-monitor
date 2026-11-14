@@ -11,7 +11,7 @@ Read-only, no dependencies, Node 22 or newer. It listens on 127.0.0.1 only, beca
 ## Run
 
 ```
-node server.mjs <project folder | config.json> [--port 4599] [--hours 24] [--no-gh]
+node server.mjs <project folder | config.json> [--port 4599] [--hours 24] [--no-gh] [--share] [--peer http://host:4599]
 ```
 
 For example `node server.mjs ~/code/my-project`, then open http://127.0.0.1:4599. One server watches one project; run a second one on another port for another project.
@@ -111,6 +111,10 @@ A JSON file; only `project` is required.
 | `prices` | Claude and OpenAI list prices | Dollars per million tokens by model, for the cost estimate: `{"gpt-6": {"in": 2, "out": 10, "cached": 0.2}}`. Keys match as substrings of the model id |
 | `github` | true | Poll pull requests with `gh` |
 | `port` | 4599 | |
+| `machine` | computer name | Name shown for this machine when several are combined |
+| `share` | false | Let other machines on the local network read this one's summary (Several machines, below) |
+| `peers` | | Other machines to show: `["http://192.168.1.20:4599"]`, or `[{"name": "den", "url": "..."}]` to choose the name |
+| `secretFile` | `~/.agent-monitor/peer-secret` | The secret the machines share |
 | `passwordFile` | `~/.agent-monitor/password` | Remote-access password file |
 | `accessFile` | `~/.agent-monitor/access.json` | Cloudflare Access settings file |
 
@@ -143,6 +147,22 @@ Claude transcripts do not name the context window. The monitor uses the sizes An
 ## Pull requests
 
 Clicking a PR number opens it in the side panel: description, checks, reviews and comments, and the changed files with their diffs. It is fetched through `gh` only when opened and kept for 30 seconds. Short diffs open on their own; the rest open on a click. A file's diff is cut at 800 lines, and GitHub returns no diff at all for very large pull requests. The arrow beside the number opens the pull request on GitHub.
+
+## Several machines
+
+When agents for one project run on more than one computer, each computer runs its own agent-monitor and one of them shows them all.
+
+1. On each other machine, start the monitor with `--share`. It then answers on the local network, and the firewall may ask you to allow it. The first time, it creates a random secret in `~/.agent-monitor/peer-secret` and says so.
+2. Copy that file to the same place on every machine, so they all hold the same secret. Restart any monitor that was already running.
+3. On the machine you look at, list the others: `--peer http://<address>:4599`, once per machine, or `peers` in the config.
+
+The page then tags each agent with its machine and adds up tokens and cost. The CPU tile draws one line per machine with a colour legend, and the Memory tile lists the machines in rows, two at a time, with dots to step through the rest. Usage limits are shown once per account, from whichever machine has the newest reading. Tool call details are fetched from the machine that holds the transcript when you open them.
+
+- A sharing machine answers other computers only with the secret, and only for its summary and tool call details. The page itself stays local to each machine.
+- The secret is kept in a file, not passed on the command line, because command lines end up in transcripts and so on this page.
+- Traffic between the machines is not encrypted, so use this on a network you trust.
+- A machine that stops answering shows as unreachable and its agents drop out after 15 seconds.
+- Each machine reads its own checkout's task cards; the page uses the cards of the machine you look at. Clocks that disagree shift the other machine's timelines by that much.
 
 ## Remote access
 

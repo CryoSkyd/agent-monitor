@@ -21,7 +21,7 @@ A read-only local dashboard. The server lives at the plugin root, two folders ab
 
 The server stops when the session that started it ends. For an all-day monitor, tell the user to run the same command in their own terminal.
 
-Flags: `--port N`, `--hours N` (how far back to load, default 24), `--no-gh` (skip pull requests).
+Flags: `--port N`, `--hours N` (how far back to load, default 24), `--no-gh` (skip pull requests), `--share` and `--peer URL` (combine several machines; see "Several machines" in the README at the plugin root before using them).
 
 ## Project settings
 

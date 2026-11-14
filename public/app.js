@@ -6,7 +6,7 @@ const MARK_LABEL={pr:'PR opened',merge:'PR merged',verdict:'Review comment',push
 const IN_FLIGHT=['coding','review','awaiting-review','changes','claimed'];
 const LANE=9,LANE_GAP=3,PAD=4,CTX_WARN=80,ALERT_REPEAT=1800;
 
-let snap=null,sys=null,cpuHistory=[],windowHours=Number(localStorage.getItem('window'))||3,colors={};
+let snap=null,sys=null,machines=null,peerHistory={},cpuHistory=[],windowHours=Number(localStorage.getItem('window'))||3,colors={};
 const expanded=new Set();
 let panel=null;
 const html={};
@@ -109,24 +109,67 @@ function renderTiles(v){
  $('board-sub').textContent=snap.config.hasPrs?`${snap.merged} PRs merged in ${snap.config.hours}h`:'';
 }
 
+/** Every machine's load, this one first. With no other machines listed there is just this one, unnamed. */
+function machineLoads(){
+ const own={name:machines?.local??'',load:sys,history:cpuHistory,note:''};
+ if(!machines?.peers.length)return [own];
+ return [own,...machines.peers.map(peer=>{
+  const up=peer.ok&&peer.cpu!=null;
+  return {name:peer.name,load:up?peer:null,history:up?peerHistory[peer.name]??[]:[],note:up?'':peer.ok?'starting':`unreachable: ${peer.error}`};
+ })];
+}
+const gigabytes=bytes=>(bytes/2**30).toFixed(1);
+const MEMORY_ROWS_SHOWN=2;
+function memoryRowStep(){const rows=$('mem-rows').children;return rows.length>1?rows[1].offsetTop-rows[0].offsetTop:1;}
+function markMemoryDots(){
+ // The list is cut to exactly the rows shown, so a scroll never leaves a slice of the next row in view.
+ const rows=$('mem-rows').children;
+ $('mem-rows').style.maxHeight=rows.length>MEMORY_ROWS_SHOWN?`${rows[MEMORY_ROWS_SHOWN].offsetTop-rows[0].offsetTop-parseFloat(getComputedStyle($('mem-rows')).rowGap)}px`:'';
+ const first=Math.round($('mem-rows').scrollTop/memoryRowStep());
+ [...$('mem-dots').children].forEach((dot,i)=>dot.classList.toggle('on',i>=first&&i<first+MEMORY_ROWS_SHOWN));
+}
+$('mem-rows').addEventListener('scroll',markMemoryDots);
+$('mem-dots').addEventListener('click',event=>{
+ const index=Number(event.target.dataset?.memDot);
+ if(Number.isInteger(index))$('mem-rows').scrollTo({top:Math.min(index,$('mem-rows').children.length-MEMORY_ROWS_SHOWN)*memoryRowStep(),behavior:'smooth'});
+});
 function renderSystem(){
- if(!sys)return;
- $('cpu').textContent=Math.round(sys.cpu);
- $('cpu-warn').hidden=sys.cpu<85;
- $('cpu-sub').textContent=`last 10 minutes · ${sys.cores} threads`;
- const used=sys.memUsed/2**30,all=sys.memTotal/2**30,share=100*sys.memUsed/sys.memTotal;
- $('mem').textContent=used.toFixed(1);
- $('mem-sub').textContent=`of ${all.toFixed(1)} GB · ${Math.round(share)}%`;
- $('mem-bar').style.width=`${share}%`;
- $('mem-bar').parentElement.classList.toggle('hot',share>=90);
+ const loads=machineLoads(),many=loads.length>1;
+ // One colour per machine, shared by its CPU line and its legend entry.
+ const palette=[colors.accent,colors.cats[3],colors.cats[2],colors.cats[4],colors.cats[6],colors.cats[1]];
+ for(const id of ['cpu','mem'])$(id).closest('.tile').classList.toggle('many',many);
+ if(many){
+  setHtml('cpu-legend',loads.map(({name,load,note},i)=>`<span title="${esc(note||`${load.cores} threads`)}"><i class="dot" style="--c:${palette[i%palette.length]}"></i>${esc(name)}<b class="${load?.cpu>=85?'hot':''}">${load?`${Math.round(load.cpu)}%`:'–'}</b></span>`).join(''));
+  setHtml('mem-rows',loads.map(({name,load,note})=>{
+   if(!load)return `<div class="mem-row"><span>${esc(name)}</span><em>${esc(note)}</em><div class="meter"><i style="width:0"></i></div></div>`;
+   const share=100*load.memUsed/load.memTotal;
+   return `<div class="mem-row"><span>${esc(name)}</span><b>${gigabytes(load.memUsed)}<small> of ${gigabytes(load.memTotal)} GB</small></b><div class="meter${share>=90?' hot':''}"><i style="width:${share}%"></i></div></div>`;
+  }).join(''));
+  // One dot per machine once they no longer all fit; the lit ones are the rows in view.
+  setHtml('mem-dots',loads.length>2?loads.map(({name},i)=>`<button data-mem-dot="${i}" aria-label="Show ${esc(name)}"></button>`).join(''):'');
+  markMemoryDots();
+  $('cpu-sub').textContent='last 10 minutes';
+ }else if(sys){
+  $('cpu').textContent=Math.round(sys.cpu);
+  $('cpu-warn').hidden=sys.cpu<85;
+  $('cpu-sub').textContent=`last 10 minutes · ${sys.cores} threads`;
+  const share=100*sys.memUsed/sys.memTotal;
+  $('mem').textContent=gigabytes(sys.memUsed);
+  $('mem-sub').textContent=`of ${gigabytes(sys.memTotal)} GB · ${Math.round(share)}%`;
+  $('mem-bar').style.width=`${share}%`;
+  $('mem-bar').parentElement.classList.toggle('hot',share>=90);
+ }
  const {ctx,width,height}=setupCanvas($('cpu-spark'));
- if(cpuHistory.length<2)return;
- const span=600_000,end=cpuHistory.at(-1)[0],x=t=>width-(end-t)/span*width,y=value=>height-1-Math.min(100,value)/100*(height-2);
- ctx.beginPath();
- cpuHistory.forEach(([t,value],i)=>i?ctx.lineTo(x(t),y(value)):ctx.moveTo(x(t),y(value)));
- ctx.strokeStyle=colors.accent;ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.stroke();
- ctx.lineTo(width,height);ctx.lineTo(x(cpuHistory[0][0]),height);ctx.closePath();
- ctx.globalAlpha=.14;ctx.fillStyle=colors.accent;ctx.fill();ctx.globalAlpha=1;
+ const span=600_000,end=Math.max(0,...loads.map(({history})=>history.at(-1)?.[0]??0)),x=t=>width-(end-t)/span*width,y=value=>height-1-Math.min(100,value)/100*(height-2);
+ loads.forEach(({history},i)=>{
+  if(history.length<2)return;
+  ctx.beginPath();
+  history.forEach(([t,value],at)=>at?ctx.lineTo(x(t),y(value)):ctx.moveTo(x(t),y(value)));
+  ctx.strokeStyle=palette[i%palette.length];ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.stroke();
+  if(many)return;
+  ctx.lineTo(x(history.at(-1)[0]),height);ctx.lineTo(x(history[0][0]),height);ctx.closePath();
+  ctx.globalAlpha=.14;ctx.fillStyle=colors.accent;ctx.fill();ctx.globalAlpha=1;
+ });
 }
 
 function drawBurn(v){
@@ -141,7 +184,7 @@ function drawBurn(v){
 
 /* ---------- rows ---------- */
 
-const chip=run=>[run.role,run.account,model(run.model),run.effort].filter(Boolean).join(' · ');
+const chip=run=>[run.role,run.account,model(run.model),run.effort,run.machine&&`on ${run.machine}`].filter(Boolean).join(' · ');
 function liveLine(run){
  if(run.status==='working'){
   const stalled=(run.stalled?`<span class="alert">▲ no output</span>`:'')+run.warn.map(warning=>`<span class="alert">▲ ${esc(warning)}</span>`).join('');
@@ -637,6 +680,14 @@ const events=new EventSource('events');
 events.onopen=()=>$('live').classList.remove('off');
 events.onerror=()=>$('live').classList.add('off');
 events.addEventListener('snap',event=>{if(!event.data)return;const first=!snap;snap=JSON.parse(event.data);if(first)renderWindow();render();});
+events.addEventListener('machines',event=>{
+ machines=JSON.parse(event.data);
+ for(const peer of machines.peers){
+  if(peer.history)peerHistory[peer.name]=peer.history;
+  else if(peer.ok&&peer.cpu!=null){const history=peerHistory[peer.name]??=[];history.push([Date.now(),peer.cpu]);if(history.length>300)history.shift();}
+ }
+ renderSystem();
+});
 events.addEventListener('history',event=>{cpuHistory=JSON.parse(event.data);});
 events.addEventListener('sys',event=>{sys=JSON.parse(event.data);cpuHistory.push([sys.t,sys.cpu]);if(cpuHistory.length>600)cpuHistory.shift();renderSystem();});
 setInterval(tick,1000);

@@ -4,7 +4,8 @@ import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {generateKeyPairSync,sign} from 'node:crypto';
-import {makeGate} from '../lib/auth.mjs';
+import {ensureSecret,isLoopback,makeGate,makeSecretCheck} from '../lib/auth.mjs';
+import {Peers,mergeBurn,mergeLimits} from '../lib/peers.mjs';
 import {makeClassifier} from '../lib/classify.mjs';
 import {makePricer} from '../lib/prices.mjs';
 import {parseCard} from '../lib/cards.mjs';
@@ -165,4 +166,42 @@ test('setup adds its section once, keeps what a project already wrote, and has n
  for(const name of ['CLAUDE.md','AGENTS.md'])assert.equal(readFileSync(join(project,name),'utf8').split('agent-monitor:start').length,2,name);
  assert.ok(parseCard(readFileSync(join(project,'tasks','TEMPLATE.md'),'utf8')));
  assert.deepEqual(plan(project).writes,[]);
+});
+
+test('another machine is let in only with the shared secret, and never when no secret is set',()=>{
+ const check=makeSecretCheck('a-long-shared-secret');
+ assert.deepEqual([check('a-long-shared-secret'),check('a-long-shared-secreT'),check(''),check(undefined),makeSecretCheck('')('')],[true,false,false,false,false]);
+ assert.deepEqual(['127.0.0.1','::1','::ffff:127.0.0.1','192.168.1.20','::ffff:192.168.1.20'].map(isLoopback),[true,true,true,false,false]);
+ const file=join(mkdtempSync(join(tmpdir(),'monitor-secret-')),'nested','peer-secret');
+ const first=ensureSecret(file),second=ensureSecret(file);
+ assert.deepEqual([first.created,second.created,second.secret===first.secret,first.secret.length>=32],[true,false,true,true]);
+});
+
+test('runs from another machine are tagged and addressed by machine, kept while it sends nothing new, and dropped once it stops answering',async ()=>{
+ let clock=0,reply={machine:'den',have:'1-1',sys:{cpu:12},runs:[{id:'a',parent:null},{id:'b',parent:'a'}],limits:[],burn:[[5,10]]};
+ const asked=[];
+ const fetcher=async(url,options)=>{
+  asked.push([url,options.headers['x-agent-monitor-secret']]);
+  if(!reply)throw new Error('offline');
+  return {ok:true,status:200,json:async()=>reply};
+ };
+ const peers=new Peers(['http://10.0.0.2:4599/'],{secret:'s',fetcher,now:()=>clock});
+ assert.deepEqual(peers.machines().map(machine=>[machine.name,machine.ok]),[['10.0.0.2',false]]);
+ assert.equal(await peers.poll(),true);
+ assert.deepEqual(asked[0],['http://10.0.0.2:4599/api/peer?have=','s']);
+ assert.deepEqual(peers.remote().views,[{id:'@den/a',parent:null,machine:'den'},{id:'@den/b',parent:'@den/a',machine:'den'}]);
+ assert.deepEqual(peers.machines(),[{name:'den',ok:true,error:'',cpu:12}]);
+ reply={machine:'den',have:'1-1',sys:{cpu:40}};
+ assert.equal(await peers.poll(),false);
+ assert.equal(asked[1][0],'http://10.0.0.2:4599/api/peer?have=1-1');
+ assert.deepEqual([peers.remote().views.length,peers.machines()[0].cpu],[2,40]);
+ reply=null;clock=20_000;
+ assert.equal(await peers.poll(),true);
+ assert.deepEqual([peers.remote().views,peers.machines()],[[],[{name:'den',ok:false,error:'offline'}]]);
+});
+
+test('machines on the same accounts merge to the newest limit reading, and their token use adds up',()=>{
+ const limits=mergeLimits([[{account:'claude',asOf:5,windows:['old']},{account:'codex',asOf:9,windows:['mine']}],[{account:'claude',asOf:8,windows:['new']}]]);
+ assert.deepEqual(limits.map(limit=>[limit.account,limit.windows[0]]),[['claude','new'],['codex','mine']]);
+ assert.deepEqual(mergeBurn([[[10,5],[20,1]],[[20,2],[15,7]]]),[[10,5],[15,7],[20,3]]);
 });
