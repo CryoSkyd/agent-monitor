@@ -48,6 +48,9 @@ a{color:inherit}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-bottom:14px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;min-height:132px}
 .big{display:flex;align-items:baseline;gap:6px;font-size:30px;font-weight:600;line-height:1}
+.by-machine{display:flex;flex-direction:column;gap:2px;align-self:center;margin-left:6px;font-size:11px;font-weight:400;line-height:1.2;color:var(--text-3);min-width:0}
+.by-machine span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.by-machine b{color:var(--text-2);font-weight:600}
 .big small{font-size:14px;font-weight:400;color:var(--text-3)}
 .big .warn{font-size:11px;font-style:normal;font-weight:600;color:var(--warning);margin-left:auto}
 .tile p{margin-top:auto}

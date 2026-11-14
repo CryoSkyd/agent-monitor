@@ -84,6 +84,10 @@ function view(){
 function renderTiles(v){
  const working=v.runs.filter(run=>run.status==='working');
  $('agents').textContent=working.length;
+ // With several machines shown, the count is also given per machine, including the ones running nothing.
+ const perMachine=new Map(machines?.peers?.length?[machines.local,...machines.peers.map(peer=>peer.name)].map(name=>[name,0]):[]);
+ if(perMachine.size)for(const run of working)if(run.machine)perMachine.set(run.machine,(perMachine.get(run.machine)??0)+1);
+ setHtml('agents-by',[...perMachine].map(([name,count])=>`<span title="${esc(name)}"><b>${count}</b> on ${esc(name)}</span>`).join(''));
  const groups=new Map();
  for(const run of working){
   const key=[run.account,model(run.model),run.effort].filter(Boolean).join(' · ');

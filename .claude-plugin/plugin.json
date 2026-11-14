@@ -1,7 +1,7 @@
 {
   "name": "agent-monitor",
   "description": "Live local dashboard for coding agents working a task board: per-task timelines, tokens, usage limits and machine load, read from Claude Code and Codex transcripts.",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "license": "MIT",
   "keywords": ["dashboard", "agents", "monitoring", "task-board"]
 }
