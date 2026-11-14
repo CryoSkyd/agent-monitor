@@ -7,7 +7,7 @@ import {generateKeyPairSync,sign} from 'node:crypto';
 import {ensureSecret,isLoopback,makeGate,makeSecretCheck} from '../lib/auth.mjs';
 import {Peers,mergeBurn,mergeLimits} from '../lib/peers.mjs';
 import {promptName} from '../lib/monitor.mjs';
-import {Names} from '../lib/names.mjs';
+import {Hidden,Names} from '../lib/names.mjs';
 import {makeClassifier} from '../lib/classify.mjs';
 import {makePricer} from '../lib/prices.mjs';
 import {parseCard} from '../lib/cards.mjs';
@@ -251,4 +251,13 @@ test('an unattended Codex run may stay silent inside a command only as long as t
  ]),shared(),{id:'s'});
  claude.poll();
  assert.equal(claude.toolAllowance(),TOOL_STALE);
+});
+
+test('a hidden session stays hidden after a restart until it is shown again',()=>{
+ const file=join(mkdtempSync(join(tmpdir(),'monitor-hidden-')),'nested','hidden.json');
+ const marked=()=>{const runs=[{id:'a'},{id:'b'}];new Hidden(file).apply(runs);return runs.map(run=>Boolean(run.hidden));};
+ assert.equal(new Hidden(file).set('a',true),true);
+ assert.deepEqual(marked(),[true,false]);
+ assert.equal(new Hidden(file).set('a',false),false);
+ assert.deepEqual(marked(),[false,false]);
 });

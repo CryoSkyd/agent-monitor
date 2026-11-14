@@ -248,7 +248,7 @@ function sessionRow(run){
  const context=contextMeter(run);
  const compact=run.status==='done'||run.status==='lost';
  const key=`run:${run.id}`;
- return `<div class="row ${compact?'compact':''}"><div class="info"><div class="l1">${expander(key)}<span class="title" title="${esc(hint)}">${esc(title)}</span><button class="rename" data-rename="${esc(run.id)}" data-name="${esc(title)}" title="Rename on this dashboard" aria-label="Rename ${esc(title)}">✎</button></div><div class="l2"><span class="pill ${run.status}"><i></i>${STATUS_LABEL[run.status]}</span>${chipSpan(chip(run))}${compact?'':`<span data-since="${run.start}"></span>`}</div>${liveLine(run)}</div>${laneCanvas([run])}<div class="metrics" title="${tokenTitle([run])}"><b>${fmtTok(work(run))}</b>${compact?'':context}</div>${expanded.has(key)?breakdown([run]):''}</div>`;
+ return `<div class="row ${compact?'compact':''}"><div class="info"><div class="l1">${expander(key)}<span class="title" title="${esc(hint)}">${esc(title)}</span><button class="rename" data-rename="${esc(run.id)}" data-name="${esc(title)}" title="Rename on this dashboard" aria-label="Rename ${esc(title)}">✎</button><button class="rename" data-hide="${esc(run.id)}" data-to="${run.hidden?'':'1'}" title="${run.hidden?'Put this session back in the list':'Move this session to the Hidden section'}">${run.hidden?'Show':'Hide'}</button></div><div class="l2"><span class="pill ${run.status}"><i></i>${STATUS_LABEL[run.status]}</span>${chipSpan(chip(run))}${compact?'':`<span data-since="${run.start}"></span>`}</div>${liveLine(run)}</div>${laneCanvas([run])}<div class="metrics" title="${tokenTitle([run])}"><b>${fmtTok(work(run))}</b>${compact?'':context}</div>${expanded.has(key)?breakdown([run]):''}</div>`;
 }
 
 const group=(label,count)=>`<div class="group">${label}<span>${count}</span></div>`;
@@ -257,7 +257,10 @@ function renderRows(v){
  if(renaming)return false;
  let changed=false;
  changed|=setHtml('flight',group('In flight',v.flight.length)+(v.flight.map(entry=>taskRow(entry,false)).join('')||'<div class="empty">Nothing in flight.</div>'));
- changed|=setHtml('sessions',v.sessions.length?group('Sessions',v.sessions.length)+v.sessions.map(sessionRow).join(''):'');
+ const shown=v.sessions.filter(run=>!run.hidden),hidden=v.sessions.filter(run=>run.hidden),open=expanded.has('hidden');
+ // Hidden sessions wait in a closed section at the end, where each can be brought back.
+ const hiddenGroup=hidden.length?`<div class="group"><button class="exp" data-expand="hidden" aria-expanded="${open}" title="Sessions you hid">${open?'▾':'▸'}</button>Hidden<span>${hidden.length}</span></div>${open?hidden.map(sessionRow).join(''):''}`:'';
+ changed|=setHtml('sessions',(shown.length?group('Sessions',shown.length)+shown.map(sessionRow).join(''):'')+hiddenGroup);
  changed|=setHtml('earlier',v.earlier.length?group(`Earlier in the last ${windowHours}h`,v.earlier.length)+v.earlier.map(entry=>taskRow(entry,true)).join(''):'');
  return changed;
 }
@@ -449,6 +452,18 @@ document.addEventListener('click',event=>{
  };
  input.addEventListener('keydown',key=>{if(key.key==='Enter')finish(true);else if(key.key==='Escape')finish(false);});
  input.addEventListener('blur',()=>finish(true));
+});
+
+document.addEventListener('click',async event=>{
+ const button=event.target.closest?.('[data-hide]');
+ if(!button)return;
+ const hide=Boolean(button.dataset.to),run=snap.runs.find(run=>run.id===button.dataset.hide);
+ try{
+  const response=await fetch('api/hide',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({run:button.dataset.hide,hidden:hide})});
+  if(!response.ok)throw new Error();
+  if(run)run.hidden=hide;
+  render();
+ }catch{raise('The session was not moved','The dashboard did not accept it.');}
 });
 
 /* ---------- lists that scroll ---------- */
@@ -652,6 +667,7 @@ function alertKeys(){
  const keys=new Map(),now=nowSec();
  for(const task of snap.tasks)if(task.phase==='needs-you')keys.set(`needs:${task.id}:${task.note}`,[`${task.id} needs you`,task.title]);
  for(const run of snap.runs){
+  if(run.hidden)continue;
   const name=run.task??(run.title||chip(run));
   if(run.status==='lost'&&now-run.last<3600)keys.set(`lost:${run.id}`,[`${name} stopped responding`,chip(run)]);
   else if(run.stalled)keys.set(`stalled:${run.id}`,[`${name} has had no output for a while`,chip(run)]);

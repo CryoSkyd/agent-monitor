@@ -145,6 +145,8 @@ button.title,button.exp{all:unset;cursor:pointer}
 .rename{all:unset;cursor:pointer;flex:none;color:var(--text-3);font-size:12px;line-height:1;padding:0 4px;opacity:0}
 .row:hover .rename,.rename:focus-visible{opacity:1}
 .rename:hover{color:var(--text)}
+.rename[data-hide]{font-size:11px;text-decoration:underline;text-underline-offset:2px}
+.group .exp{margin-right:-2px}
 /* Touch screens have no hover, so the pencil is always there, faintly. */
 @media(hover:none){.rename{opacity:.6}}
 .rename-input{flex:1;min-width:0;font:inherit;font-weight:500;color:var(--text);background:var(--raised,var(--surface));border:1px solid var(--accent);border-radius:5px;padding:1px 6px;margin:-2px 0}

@@ -8,7 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {ensureSecret,isLoopback,makeGate,makeSecretCheck,readAccess,readPassword,readSecret} from './lib/auth.mjs';
 import {Peers,SECRET_HEADER,splitPeerId} from './lib/peers.mjs';
 import {Monitor} from './lib/monitor.mjs';
-import {Names} from './lib/names.mjs';
+import {Hidden,Names} from './lib/names.mjs';
 import {PullRequests} from './lib/github.mjs';
 import {SystemMonitor} from './lib/system.mjs';
 
@@ -46,11 +46,12 @@ if(sharing?.created)console.log(`Created the shared secret in ${sharing.file}. C
 const peers=new Peers(config.peers,{secret});
 const machinesText=withHistory=>JSON.stringify({local:config.machine,peers:peers.machines(withHistory)});
 let version=0,lastSample=null;
-const names=new Names(config.namesFile);
+const names=new Names(config.namesFile),hidden=new Hidden(config.hiddenFile);
 function rebuild(now){
  const snapshot=monitor.snapshot(now,pulls.list,peers.size?{machine:config.machine,...peers.remote()}:null);
  snapshot.version=VERSION;
  names.apply(snapshot.runs);
+ hidden.apply(snapshot.runs);
  const text=JSON.stringify(snapshot);
  lastBuild=now;dirty=false;
  // The clock field changes every build; compare the rest so idle periods send nothing.
@@ -112,7 +113,7 @@ const server=createServer(async (request,response)=>{
   if(peers.size)send(response,'machines',machinesText(true));
   return;
  }
- if(url.pathname==='/api/name'){
+ if(url.pathname==='/api/name'||url.pathname==='/api/hide'){
   // A JSON body from the page itself: another site cannot send one to this address without the browser asking first.
   const origin=request.headers.origin;
   if(request.method!=='POST'||!/^application\/json\b/.test(request.headers['content-type']??'')||(origin&&new URL(origin).host!==request.headers.host)){json(response,400,{error:'Not accepted'});return;}
@@ -120,10 +121,11 @@ const server=createServer(async (request,response)=>{
   for await(const chunk of request){body+=chunk;if(body.length>2000)break;}
   let given;
   try{given=JSON.parse(body);}catch{}
-  if(typeof given?.run!=='string'||!given.run||given.run.length>300||typeof given.name!=='string'){json(response,400,{error:'Not accepted'});return;}
-  const name=names.set(given.run,given.name);
+  const hiding=url.pathname==='/api/hide';
+  if(typeof given?.run!=='string'||!given.run||given.run.length>300||typeof (hiding?given.hidden:given.name)!==(hiding?'boolean':'string')){json(response,400,{error:'Not accepted'});return;}
+  const saved=hiding?{hidden:hidden.set(given.run,given.hidden)}:{name:names.set(given.run,given.name)};
   rebuild(Date.now());
-  json(response,200,{name});
+  json(response,200,saved);
   return;
  }
  if(url.pathname==='/api/peer'){
