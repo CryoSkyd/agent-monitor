@@ -168,7 +168,9 @@ function drawBurn(v){
 
 /* ---------- rows ---------- */
 
-const chip=run=>[run.role,run.account,model(run.model),run.effort,run.machine&&`on ${run.machine}`].filter(Boolean).join(' · ');
+// The machine comes first: the line is cut short when it does not fit, and where an agent runs matters more than its effort setting.
+const chip=run=>[run.machine,run.role,run.account,model(run.model),run.effort].filter(Boolean).join(' · ');
+const chipSpan=text=>`<span class="chip" title="${esc(text)}">${esc(text)}</span>`;
 function liveLine(run){
  if(run.status==='working'){
   const stalled=(run.stalled?`<span class="alert">▲ no output</span>`:'')+run.warn.map(warning=>`<span class="alert">▲ ${esc(warning)}</span>`).join('');
@@ -208,8 +210,10 @@ function breakdown(runs,extra=''){
  const parts=totals.map((seconds,i)=>({cat:snap.cats[i],seconds})).filter(part=>part.seconds>0);
  const bar=parts.map(part=>`<i style="flex:${part.seconds};--c:var(--cat-${part.cat})" title="${CAT_LABEL[part.cat]} ${fmtDur(part.seconds)}"></i>`).join('');
  const key=[...parts].sort((a,b)=>b.seconds-a.seconds).map(part=>`<span><i class="dot" style="--c:var(--cat-${part.cat})"></i>${CAT_LABEL[part.cat]} <b>${fmtDur(part.seconds)}</b> ${Math.round(100*part.seconds/all)}%</span>`).join('');
- const list=runs.length>1?`<div class="runs">${runs.map(run=>`<b>${esc(run.title||run.role)}</b><span>${esc([run.account,model(run.model),run.effort].filter(Boolean).join(' · '))}</span><span>${fmtClock(run.start)}–${run.end?fmtClock(run.end):'now'}</span><span title="${tokenTitle([run])}">${fmtTok(work(run))} tokens · ${effort(run)}</span>`).join('')}</div>`:`<div class="mix-key"><span>${runs.map(effort).join('')}</span></div>`;
- return `<div class="detail">${extra}<div class="mix">${bar}</div><div class="mix-key">${key||'No activity recorded'}</div>${list}<div class="tools" data-tools="${esc(runs.map(run=>run.id).join(','))}"></div></div>`;
+ // The row above cuts long names short, so the opened row spells out each agent in full.
+ const who=`<div class="who">${runs.map(run=>`<p><b>${esc(run.title||run.role)}</b><span>${esc(chip(run))}</span></p>`).join('')}</div>`;
+ const list=runs.length>1?`<div class="runs">${runs.map(run=>`<b title="${esc(run.title||run.role)}">${esc(run.title||run.role)}</b><span title="${esc(chip(run))}">${esc([run.machine,run.account,model(run.model),run.effort].filter(Boolean).join(' · '))}</span><span>${fmtClock(run.start)}–${run.end?fmtClock(run.end):'now'}</span><span title="${tokenTitle([run])}">${fmtTok(work(run))} tokens · ${effort(run)}</span>`).join('')}</div>`:`<div class="mix-key"><span>${runs.map(effort).join('')}</span></div>`;
+ return `<div class="detail">${who}${extra}<div class="mix">${bar}</div><div class="mix-key">${key||'No activity recorded'}</div>${list}<div class="tools" data-tools="${esc(runs.map(run=>run.id).join(','))}"></div></div>`;
 }
 const expander=key=>`<button class="exp" data-expand="${esc(key)}" aria-expanded="${expanded.has(key)}" title="Time by activity">${expanded.has(key)?'▾':'▸'}</button>`;
 const laneCanvas=runs=>{const count=Math.max(1,...lanes(runs).map(item=>item.lane+1));return `<canvas class="lane" data-runs="${esc(runs.map(run=>run.id).join(','))}" data-lanes="${count}"></canvas>`;};
@@ -235,7 +239,7 @@ function taskRow({task,runs},compact){
  }
  const who=working.length?working.map(chip).join(' + '):task.agent||'';
  const started=runs.length?`<span data-since="${Math.min(...runs.map(run=>run.start))}"></span>`:'';
- return `<div class="row"><div class="info">${head}<div class="l2">${pill}${pr}<span class="chip">${esc(who)}</span>${started}</div>${detail}</div>${laneCanvas(runs)}<div class="metrics" title="${tokenTitle(runs)}"><b>${fmtTok(tokens)}</b>${context}<span>${sum(runs,run=>run.tools)} tool calls</span></div>${more}</div>`;
+ return `<div class="row"><div class="info">${head}<div class="l2">${pill}${pr}${chipSpan(who)}${started}</div>${detail}</div>${laneCanvas(runs)}<div class="metrics" title="${tokenTitle(runs)}"><b>${fmtTok(tokens)}</b>${context}<span>${sum(runs,run=>run.tools)} tool calls</span></div>${more}</div>`;
 }
 
 function sessionRow(run){
@@ -243,7 +247,7 @@ function sessionRow(run){
  const context=contextMeter(run);
  const compact=run.status==='done'||run.status==='lost';
  const key=`run:${run.id}`;
- return `<div class="row ${compact?'compact':''}"><div class="info"><div class="l1">${expander(key)}<span class="title" title="${esc(title)}">${esc(title)}</span></div><div class="l2"><span class="pill ${run.status}"><i></i>${STATUS_LABEL[run.status]}</span><span class="chip">${esc(chip(run))}</span>${compact?'':`<span data-since="${run.start}"></span>`}</div>${liveLine(run)}</div>${laneCanvas([run])}<div class="metrics" title="${tokenTitle([run])}"><b>${fmtTok(work(run))}</b>${compact?'':context}</div>${expanded.has(key)?breakdown([run]):''}</div>`;
+ return `<div class="row ${compact?'compact':''}"><div class="info"><div class="l1">${expander(key)}<span class="title" title="${esc(title)}">${esc(title)}</span></div><div class="l2"><span class="pill ${run.status}"><i></i>${STATUS_LABEL[run.status]}</span>${chipSpan(chip(run))}${compact?'':`<span data-since="${run.start}"></span>`}</div>${liveLine(run)}</div>${laneCanvas([run])}<div class="metrics" title="${tokenTitle([run])}"><b>${fmtTok(work(run))}</b>${compact?'':context}</div>${expanded.has(key)?breakdown([run]):''}</div>`;
 }
 
 const group=(label,count)=>`<div class="group">${label}<span>${count}</span></div>`;

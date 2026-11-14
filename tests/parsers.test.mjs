@@ -6,6 +6,7 @@ import {join} from 'node:path';
 import {generateKeyPairSync,sign} from 'node:crypto';
 import {ensureSecret,isLoopback,makeGate,makeSecretCheck} from '../lib/auth.mjs';
 import {Peers,mergeBurn,mergeLimits} from '../lib/peers.mjs';
+import {promptName} from '../lib/monitor.mjs';
 import {makeClassifier} from '../lib/classify.mjs';
 import {makePricer} from '../lib/prices.mjs';
 import {parseCard} from '../lib/cards.mjs';
@@ -204,4 +205,10 @@ test('machines on the same accounts merge to the newest limit reading, and their
  const limits=mergeLimits([[{account:'claude',asOf:5,windows:['old']},{account:'codex',asOf:9,windows:['mine']}],[{account:'claude',asOf:8,windows:['new']}]]);
  assert.deepEqual(limits.map(limit=>[limit.account,limit.windows[0]]),[['claude','new'],['codex','mine']]);
  assert.deepEqual(mergeBurn([[[10,5],[20,1]],[[20,2],[15,7]]]),[[10,5],[15,7],[20,3]]);
+});
+
+test('a run with no name is named after the first line it was asked, without markup',()=>{
+ const table=[['Check the build\nthen report','Check the build'],['<command-name>/review</command-name>\n\n  Review PR 12  ','/review'],['<tag></tag>\r\n\r\nSecond line','Second line'],['',''],[undefined,'']];
+ for(const [prompt,name] of table)assert.equal(promptName(prompt),name);
+ assert.equal(promptName('x'.repeat(200)).length,70);
 });
