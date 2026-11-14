@@ -60,7 +60,6 @@ a{color:inherit}
 .cpu-legend span{display:flex;align-items:center;gap:5px;white-space:nowrap}
 .cpu-legend b{color:var(--text);font-size:15px}
 .cpu-legend b.hot{color:var(--warning)}
-/* Two machines fit; more scroll one row at a time. */
 .mem-rows{display:flex;flex-direction:column;gap:10px}
 /* Lists that outgrow their space: a few rows in view, one row per scroll step, dots in place of a scrollbar. */
 .snap-host{position:relative}
