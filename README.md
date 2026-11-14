@@ -156,7 +156,7 @@ When agents for one project run on more than one computer, each computer runs it
 2. Copy that file to the same place on every machine, so they all hold the same secret. Restart any monitor that was already running.
 3. On the machine you look at, list the others: `--peer http://<address>:4599`, once per machine, or `peers` in the config.
 
-The page then tags each agent with its machine and adds up tokens and cost. The CPU tile draws one line per machine with a colour legend, and the Memory tile lists the machines in rows, two at a time, with dots to step through the rest. Usage limits are shown once per account, from whichever machine has the newest reading. Tool call details are fetched from the machine that holds the transcript when you open them.
+The page then tags each agent with its machine and adds up tokens and cost. The CPU tile draws one line per machine with a colour legend, and the Memory tile lists the machines in rows, three at a time. Like the other lists on the page, a longer one scrolls a row at a time, with dots to step through it. Usage limits are shown once per account, from whichever machine has the newest reading. Tool call details are fetched from the machine that holds the transcript when you open them.
 
 - A sharing machine answers other computers only with the secret, and only for its summary and tool call details. The page itself stays local to each machine.
 - The secret is kept in a file, not passed on the command line, because command lines end up in transcripts and so on this page.

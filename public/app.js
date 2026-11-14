@@ -119,20 +119,6 @@ function machineLoads(){
  })];
 }
 const gigabytes=bytes=>(bytes/2**30).toFixed(1);
-const MEMORY_ROWS_SHOWN=2;
-function memoryRowStep(){const rows=$('mem-rows').children;return rows.length>1?rows[1].offsetTop-rows[0].offsetTop:1;}
-function markMemoryDots(){
- // The list is cut to exactly the rows shown, so a scroll never leaves a slice of the next row in view.
- const rows=$('mem-rows').children;
- $('mem-rows').style.maxHeight=rows.length>MEMORY_ROWS_SHOWN?`${rows[MEMORY_ROWS_SHOWN].offsetTop-rows[0].offsetTop-parseFloat(getComputedStyle($('mem-rows')).rowGap)}px`:'';
- const first=Math.round($('mem-rows').scrollTop/memoryRowStep());
- [...$('mem-dots').children].forEach((dot,i)=>dot.classList.toggle('on',i>=first&&i<first+MEMORY_ROWS_SHOWN));
-}
-$('mem-rows').addEventListener('scroll',markMemoryDots);
-$('mem-dots').addEventListener('click',event=>{
- const index=Number(event.target.dataset?.memDot);
- if(Number.isInteger(index))$('mem-rows').scrollTo({top:Math.min(index,$('mem-rows').children.length-MEMORY_ROWS_SHOWN)*memoryRowStep(),behavior:'smooth'});
-});
 function renderSystem(){
  const loads=machineLoads(),many=loads.length>1;
  // One colour per machine, shared by its CPU line and its legend entry.
@@ -145,9 +131,6 @@ function renderSystem(){
    const share=100*load.memUsed/load.memTotal;
    return `<div class="mem-row"><span>${esc(name)}</span><b>${gigabytes(load.memUsed)}<small> of ${gigabytes(load.memTotal)} GB</small></b><div class="meter${share>=90?' hot':''}"><i style="width:${share}%"></i></div></div>`;
   }).join(''));
-  // One dot per machine once they no longer all fit; the lit ones are the rows in view.
-  setHtml('mem-dots',loads.length>2?loads.map(({name},i)=>`<button data-mem-dot="${i}" aria-label="Show ${esc(name)}"></button>`).join(''):'');
-  markMemoryDots();
   $('cpu-sub').textContent='last 10 minutes';
  }else if(sys){
   $('cpu').textContent=Math.round(sys.cpu);
@@ -170,6 +153,7 @@ function renderSystem(){
   ctx.lineTo(x(history.at(-1)[0]),height);ctx.lineTo(x(history[0][0]),height);ctx.closePath();
   ctx.globalAlpha=.14;ctx.fillStyle=colors.accent;ctx.fill();ctx.globalAlpha=1;
  });
+ refreshSnapLists();
 }
 
 function drawBurn(v){
@@ -421,8 +405,67 @@ function render(){
  $('project').textContent=snap.project.name;
  document.title=`${v.runs.filter(run=>run.status==='working').length} running · ${snap.project.name}`;
  renderTiles(v);renderLegend();renderRows(v);renderLists();renderPanelHead();fillTools();checkAlerts();
+ refreshSnapLists();
  tick();
 }
+
+/* ---------- lists that scroll ---------- */
+
+// A list longer than its limit shows that many rows, scrolls one row at a time, and gets a column of dots to step through it.
+const SNAP_LISTS=[['#mem-rows',3],['#limits',4],['#agents-sub',3],['.list ul',6]],MAX_DOTS=8;
+const rowTop=(rows,index)=>rows.children[index].offsetTop-rows.children[0].offsetTop;
+function firstRowInView(rows){
+ const last=rows.children.length-Number(rows.dataset.shown);
+ let first=0;
+ while(first<last&&rowTop(rows,first)<rows.scrollTop-1)first++;
+ return first;
+}
+/** Cuts the list to exactly the rows in view, whatever their heights, so no slice of the next row shows. */
+function fitSnapHeight(rows){
+ const first=firstRowInView(rows),shown=Number(rows.dataset.shown);
+ const end=first+shown<rows.children.length?rowTop(rows,first+shown)-parseFloat(getComputedStyle(rows).rowGap||0):rows.scrollHeight;
+ rows.style.maxHeight=`${end-rowTop(rows,first)}px`;
+}
+function markSnapDots(rows){
+ const dots=rows.nextElementSibling,count=rows.children.length,shown=Number(rows.dataset.shown);
+ if(!dots?.classList.contains('snap-dots'))return;
+ const first=firstRowInView(rows);
+ // Up to MAX_DOTS rows get a dot each, lit while in view; a longer list gets MAX_DOTS dots, one lit for how far down it is.
+ const lit=count<=MAX_DOTS?index=>index>=first&&index<first+shown:index=>index===Math.round(first*(MAX_DOTS-1)/(count-shown));
+ [...dots.children].forEach((dot,index)=>dot.classList.toggle('on',lit(index)));
+}
+function refreshSnapLists(){
+ for(const [selector,shown] of SNAP_LISTS)for(const rows of document.querySelectorAll(selector)){
+  const count=rows.children.length,over=count>shown,host=rows.parentElement;
+  let dots=rows.nextElementSibling?.classList.contains('snap-dots')?rows.nextElementSibling:null;
+  rows.classList.toggle('snap-rows',over);
+  if(!over){rows.style.maxHeight='';dots?.remove();continue;}
+  rows.dataset.shown=shown;
+  if(!dots){dots=document.createElement('div');dots.className='snap-dots';rows.after(dots);host.classList.add('snap-host');}
+  const wanted=Math.min(count,MAX_DOTS);
+  if(dots.childElementCount!==wanted)dots.innerHTML='<button aria-label="Scroll the list"></button>'.repeat(wanted);
+  dots.style.top=`${rows.offsetTop+rows.offsetHeight/2}px`;
+  if(!settling.has(rows))fitSnapHeight(rows);
+  markSnapDots(rows);
+ }
+}
+// Scroll events do not bubble, so they are caught on the way down.
+// The height is refitted only once a scroll has come to rest: resizing a list mid-scroll stops the scroll.
+const settling=new Map();
+document.addEventListener('scroll',event=>{
+ const rows=event.target;
+ if(!rows.classList?.contains('snap-rows'))return;
+ markSnapDots(rows);
+ clearTimeout(settling.get(rows));
+ settling.set(rows,setTimeout(()=>{settling.delete(rows);if(rows.isConnected&&rows.classList.contains('snap-rows'))fitSnapHeight(rows);},160));
+},true);
+document.addEventListener('click',event=>{
+ const dot=event.target.closest?.('.snap-dots button');
+ if(!dot)return;
+ const dots=dot.parentElement,rows=dots.previousElementSibling,count=rows.children.length,last=count-Number(rows.dataset.shown);
+ const index=[...dots.children].indexOf(dot),row=count<=MAX_DOTS?Math.min(index,last):Math.round(index*last/(MAX_DOTS-1));
+ rows.scrollTo({top:rowTop(rows,row),behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});
+});
 
 /* ---------- task panel ---------- */
 
