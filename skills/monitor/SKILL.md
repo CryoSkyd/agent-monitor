@@ -9,7 +9,7 @@ A read-only local dashboard. The server lives at the plugin root, two folders ab
 
 ## Start it
 
-1. Check whether one is already running for this project: request `http://127.0.0.1:4599/api/project` (then 4600, 4601 if the first answers for another project). It returns the project `name` and `path`. If the path matches, give the user that URL and stop.
+1. Check whether one is already running for this project: request `http://127.0.0.1:4599/api/project` (then 4600, 4601 if the first answers for another project). It returns the project `name` and `path`, plus `share` (true when it is shared with other machines) and `peers` (how many other machines it shows). If the path matches and it already does what the user asked for, give the user that URL and stop. If the user asked for `--share` or `--peer` and the running one lacks it, see "Several machines" below.
 2. Otherwise start the server in the background, so it outlives the turn, with the project folder as the argument:
 
    ```
@@ -21,7 +21,22 @@ A read-only local dashboard. The server lives at the plugin root, two folders ab
 
 The server stops when the session that started it ends. For an all-day monitor, tell the user to run the same command in their own terminal.
 
-Flags: `--port N`, `--hours N` (how far back to load, default 24), `--no-gh` (skip pull requests), `--share` and `--peer URL` (combine several machines; see "Several machines" in the README at the plugin root before using them).
+Flags: `--port N`, `--hours N` (how far back to load, default 24), `--no-gh` (skip pull requests), `--share` and `--peer URL` (next section). Words the user adds after the command, as in `/monitor --share`, are flags to pass on.
+
+## Several machines
+
+When agents for one project run on more than one computer, each runs its own monitor and one of them shows them all. "Several machines" in the README at the plugin root has the full description.
+
+**`--share`** (on each machine that is not the one being looked at) lets other machines on the local network read this one's summary.
+
+1. If a monitor is already running for the project without `share`, it has to be restarted to turn sharing on. Stop it only if this session started it; otherwise tell the user to stop it where they started it, and wait.
+2. Start the server with `--share` and read what it prints:
+   - `Created the shared secret in <file>` appears the first time. Relay the file's path and tell the user to copy that file to the same place on every other machine. Never print, read out or paste the secret itself: this transcript is shown on the dashboard.
+   - `Shared with other machines on this network as "<name>": http://<address>:<port>` gives the address the viewing machine needs. Relay it.
+3. Tell the user the operating system's firewall may ask to allow Node, and that someone has to approve it on that machine.
+4. Say plainly that a monitor started from this session stops when the session ends, and give the terminal command for an always-on one: `node <plugin root>/server.mjs <project folder> --share`.
+
+**`--peer <address>`** (on the machine being looked at, once per other machine) adds that machine's agents to this page. The secret file must already be here: if the server prints that other machines will refuse it, the file is missing. A machine that cannot be reached shows as unreachable on the page with the reason; the usual causes are the firewall, a wrong address, a different secret, or the other monitor not running with `--share`.
 
 ## Project settings
 

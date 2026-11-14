@@ -1,6 +1,6 @@
 // Usage: node server.mjs <project folder | config.json> [--port 4599] [--hours 24] [--no-gh] [--share] [--peer http://host:4599]
 import {createServer} from 'node:http';
-import {hostname} from 'node:os';
+import {hostname,networkInterfaces} from 'node:os';
 import {gzipSync} from 'node:zlib';
 import {existsSync,readFileSync,statSync} from 'node:fs';
 import {basename,dirname,extname,join,resolve} from 'node:path';
@@ -134,7 +134,7 @@ const server=createServer(async (request,response)=>{
   else pulls.detail(number).then(detail=>reply(200,detail),error=>reply(502,{error:String(error.message).split('\n')[0]}));
   return;
  }
- if(url.pathname==='/api/project'){response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({name:config.name,path:config.project}));return;}
+ if(url.pathname==='/api/project'){response.writeHead(200,{'content-type':'application/json'});response.end(JSON.stringify({name:config.name,path:config.project,machine:config.machine,share:config.share,peers:config.peers.length}));return;}
  if(url.pathname==='/api/snapshot'){response.writeHead(200,{'content-type':'application/json'});response.end(snapshotText);return;}
  const name=['/','/agents.html'].includes(url.pathname)?'index.html':url.pathname.slice(1);
  const path=join(here,'public',name);
@@ -151,6 +151,7 @@ server.on('error',error=>{
  if(error.code!=='EADDRINUSE'||port>=config.port+20)throw error;
  server.listen(++port,host);
 });
-server.on('listening',()=>console.log(`agent-monitor for ${config.name}: http://127.0.0.1:${port}${host==='0.0.0.0'?`\nShared with other machines on this network as "${config.machine}", port ${port}`:''}${config.peers.length?`\nAlso showing: ${config.peers.map(peer=>peer.url??peer).join(', ')}`:''}\nRemote access through a tunnel: ${[access&&'Cloudflare Access sign-in',password&&'the password'].filter(Boolean).join(' or ')||'refused, nothing set up'}`));
+const lanAddresses=()=>Object.values(networkInterfaces()).flat().filter(address=>address.family==='IPv4'&&!address.internal).map(address=>address.address);
+server.on('listening',()=>console.log(`agent-monitor for ${config.name}: http://127.0.0.1:${port}${host==='0.0.0.0'?`\nShared with other machines on this network as "${config.machine}": ${lanAddresses().map(address=>`http://${address}:${port}`).join(', ')||`port ${port}`}`:''}${config.peers.length?`\nAlso showing: ${config.peers.map(peer=>peer.url??peer).join(', ')}`:''}\nRemote access through a tunnel: ${[access&&'Cloudflare Access sign-in',password&&'the password'].filter(Boolean).join(' or ')||'refused, nothing set up'}`));
 server.listen(port,host);
 for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{system.stop();pulls.stop();process.exit(0);});
