@@ -35,6 +35,19 @@ It adds three skills. Depending on the Claude Code version they are typed as `/s
 - `monitor` starts the server for the current project and gives the URL.
 - `monitor-demo` runs the dashboard on invented data (Demo, below).
 
+### Updating
+
+In a terminal:
+
+```
+claude plugin marketplace update agent-monitor
+claude plugin update agent-monitor@agent-monitor
+```
+
+Or inside Claude Code: run `/plugin`, open the **Marketplaces** tab, select agent-monitor and choose **Update marketplace**. The same screen has **Enable auto-update**, which is off by default for marketplaces like this one.
+
+Then restart Claude Code, or run `/reload-plugins`, to load the new version. A dashboard that is already running keeps the old code until it is stopped and started again.
+
 ## Setting up a project
 
 Claude Code and Codex already write transcripts, so activity, tokens and timelines show with no setup. Setup adds the naming that ties each run to a task.
