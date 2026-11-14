@@ -1,0 +1,11 @@
+{
+  "name": "agent-monitor",
+  "owner": {"name": "agent-monitor"},
+  "plugins": [
+    {
+      "name": "agent-monitor",
+      "source": "./",
+      "description": "Live local dashboard for coding agents working a task board."
+    }
+  ]
+}

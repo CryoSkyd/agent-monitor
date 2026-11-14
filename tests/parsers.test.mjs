@@ -1,0 +1,162 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {generateKeyPairSync,sign} from 'node:crypto';
+import {makeGate} from '../lib/auth.mjs';
+import {makeClassifier} from '../lib/classify.mjs';
+import {makePricer} from '../lib/prices.mjs';
+import {parseCard} from '../lib/cards.mjs';
+import {LimitHistory} from '../lib/forecast.mjs';
+import {splitDiff} from '../lib/github.mjs';
+import {ClaudeRun,CodexRun} from '../lib/runs.mjs';
+import {apply,plan} from '../lib/setup.mjs';
+import {CATS} from '../lib/timeline.mjs';
+
+const shared=()=>({burn:new Map(),limits:new Map(),classify:makeClassifier(),price:makePricer({'model-a':{in:1,out:10,cached:.1}}),isProject:()=>true});
+const at=second=>new Date(Date.UTC(2026,0,1,0,0,second)).toISOString();
+function transcript(lines){
+ const path=join(mkdtempSync(join(tmpdir(),'agent-monitor-')),'run.jsonl');
+ writeFileSync(path,lines.map(line=>JSON.stringify(line)).join('\n')+'\n');
+ return path;
+}
+const cats=run=>run.tl.segs.map(([start,end,cat])=>`${CATS[cat]}:${(end-start)/1000}`);
+
+test('a Claude transcript becomes thinking, tool and idle segments with deduplicated usage',()=>{
+ const usage={input_tokens:10,cache_creation_input_tokens:90,cache_read_input_tokens:1000,output_tokens:50};
+ const run=new ClaudeRun(transcript([
+  {type:'user',timestamp:at(0),message:{role:'user',content:'Act as Coder for T-12'}},
+  {type:'assistant',timestamp:at(5),message:{id:'m1',model:'model-a',stop_reason:'tool_use',usage,content:[{type:'thinking',thinking:''}]}},
+  {type:'assistant',timestamp:at(5),message:{id:'m1',model:'model-a',stop_reason:'tool_use',usage,content:[{type:'tool_use',id:'t1',name:'Bash',input:{command:'node --test tests/a.test.ts'}}]}},
+  {type:'user',timestamp:at(35),message:{role:'user',content:[{type:'tool_result',tool_use_id:'t1',content:'ok'}]}},
+  {type:'assistant',timestamp:at(40),message:{id:'m2',model:'model-a',stop_reason:'end_turn',usage,content:[{type:'text',text:'Done.'}]}},
+ ]),shared(),{id:'s'});
+ run.poll();
+ assert.deepEqual(cats(run),['thinking:5','testing:30','thinking:5']);
+ assert.equal(run.tl.cur.c,'idle');
+ assert.deepEqual(run.tokens,{in:200,cached:2000,out:100});
+ assert.equal(run.prompt,'Act as Coder for T-12');
+ assert.deepEqual([run.requests,run.turns],[2,1]);
+ const call=run.detail(0);
+ assert.deepEqual([call.name,call.input,call.output,call.e-call.s],['$ node','command: node --test tests/a.test.ts','ok',30_000]);
+ // Per request: 10 input + 90 five-minute cache writes at 1.25x + 1000 cached at 0.1 + 50 output at 10, per million.
+ assert.ok(Math.abs(run.cost-2*(10+90*1.25+1000*.1+50*10)/1e6)<1e-12);
+});
+
+test('a Codex exec transcript ends at task_complete and reports the account limits',()=>{
+ const state=shared();
+ const run=new CodexRun(transcript([
+  {timestamp:at(0),type:'session_meta',payload:{id:'a',session_id:'a',cwd:'/repo',originator:'codex_exec',source:'exec',timestamp:at(0)}},
+  {timestamp:at(0),type:'turn_context',payload:{model:'model-b',effort:'high'}},
+  {timestamp:at(1),type:'response_item',payload:{type:'message',role:'user',content:[{type:'input_text',text:'# AGENTS.md instructions for /repo'}]}},
+  {timestamp:at(1),type:'response_item',payload:{type:'message',role:'user',content:[{type:'input_text',text:'act as Reviewer for PR #7'}]}},
+  {timestamp:at(4),type:'response_item',payload:{type:'custom_tool_call',call_id:'c1',name:'exec',input:'text(await tools.exec_command({cmd:"git push -u origin task/x"}))'}},
+  {timestamp:at(9),type:'response_item',payload:{type:'custom_tool_call_output',call_id:'c1',output:[]}},
+  {timestamp:at(10),type:'event_msg',payload:{type:'token_count',info:{total_token_usage:{input_tokens:500,cached_input_tokens:400,output_tokens:20},last_token_usage:{input_tokens:300},model_context_window:1000},rate_limits:{plan_type:'pro',primary:{used_percent:42,window_minutes:10080,resets_at:1}}}},
+  {timestamp:at(12),type:'event_msg',payload:{type:'task_complete',last_agent_message:'Approved.'}},
+ ]),state,{account:'codex'});
+ run.poll();
+ assert.deepEqual(cats(run),['thinking:3','git:5','thinking:3']);
+ assert.equal(run.ended,Date.parse(at(12)));
+ assert.deepEqual(run.marks.map(([,type])=>type),['push']);
+ assert.deepEqual(run.tokens,{in:100,cached:400,out:20});
+ assert.equal(run.prompt,'act as Reviewer for PR #7');
+ assert.equal(run.unpriced,true);
+ assert.deepEqual(state.limits.get('codex').windows.map(window=>[window.label,window.used]),[['week',42]]);
+});
+
+test('commands are classified by what they do',()=>{
+ const {command}=makeClassifier('scripts[\\\\/]whole-games');
+ const table={'cargo test -p engine':'testing','node scripts/whole-games.mjs --games 10':'testing','gh pr create --base main':'git','Get-Content AGENTS.md':'reading','rm -rf dist':'command'};
+ for(const [cmd,cat] of Object.entries(table))assert.equal(command(cmd).cat,cat,cmd);
+});
+
+test('a card front matter gives fields and lists',()=>{
+ assert.deepEqual(parseCard('---\nid: T-1\nstatus: ready   # note\ndepends_on: [T-2, T-3]\n---\nbody'),{id:'T-1',status:'ready',depends_on:['T-2','T-3']});
+ assert.equal(parseCard('no front matter'),null);
+});
+
+test('a run counts failed calls, repeat reads and compactions, and warns about a call repeated in a row',()=>{
+ const call=(second,id,name,input)=>({type:'assistant',timestamp:at(second),message:{id:`m${id}`,model:'model-a',stop_reason:'tool_use',content:[{type:'tool_use',id,name,input}]}});
+ const result=(second,id,failed)=>({type:'user',timestamp:at(second),message:{role:'user',content:[{type:'tool_result',tool_use_id:id,is_error:failed,content:''}]}});
+ const read={file_path:'/repo/a.ts'};
+ const run=new ClaudeRun(transcript([
+  {type:'user',timestamp:at(0),message:{role:'user',content:'go'}},
+  call(1,'a','Read',read),result(2,'a',false),
+  call(3,'b','Edit',{file_path:'/repo/a.ts'}),result(4,'b',true),
+  call(5,'c','Read',read),result(6,'c',false),
+  {type:'system',subtype:'compact_boundary',timestamp:at(7)},
+  call(8,'d','Read',read),result(9,'d',false),
+  call(10,'e','Read',read),result(11,'e',false),
+  call(12,'f','Read',read),result(13,'f',false),
+ ]),shared(),{id:'s'});
+ run.poll();
+ // Reads after the edit and after the compaction start fresh; only the two after that repeat.
+ assert.deepEqual([run.errors,run.rereads,run.compactions],[1,2,1]);
+ assert.deepEqual(run.marks.map(([,type])=>type),['compact']);
+ assert.deepEqual(run.warnings(),['same call 4 times in a row']);
+});
+
+test('a limit trend measures the rise since the latest reset and goes quiet without fresh readings',()=>{
+ const history=new LimitHistory(),minute=60_000,start=Date.UTC(2026,0,1);
+ for(const [at,used] of [[0,90],[10,95],[20,4],[30,8],[50,16]])history.add('codex','5h',start+at*minute,used);
+ const trend=history.trend('codex','5h',start+55*minute);
+ assert.equal(Math.round(trend.rate),24);
+ assert.equal(trend.used,16);
+ assert.equal(history.trend('codex','5h',start+90*minute),null);
+ assert.equal(history.trend('codex','week',start+55*minute),null);
+});
+
+test('a diff splits into files with their hunks, and long files are cut',()=>{
+ const diff=['diff --git a/src/a.ts b/src/a.ts','index 1..2 100644','--- a/src/a.ts','+++ b/src/a.ts','@@ -1,2 +1,2 @@',' keep','-old','+new',
+  'diff --git a/gone.txt b/gone.txt','deleted file mode 100644','--- a/gone.txt','+++ /dev/null','@@ -1 +0,0 @@','-bye',
+  'diff --git a/logo.png b/logo.png','Binary files differ',''].join('\r\n');
+ assert.deepEqual(splitDiff(diff,3),[
+  {path:'src/a.ts',lines:['@@ -1,2 +1,2 @@',' keep','-old'],more:1},
+  {path:'gone.txt',lines:['@@ -1 +0,0 @@','-bye'],more:0},
+  {path:'logo.png',lines:[],more:0},
+ ]);
+});
+
+test('requests relayed by a tunnel need the password, local ones do not, and repeated wrong passwords lock the visitor out',async ()=>{
+ let clock=0;
+ const basic=secret=>({authorization:`Basic ${Buffer.from(`me:${secret}`).toString('base64')}`});
+ const gate=makeGate({password:'right:one',now:()=>clock}),remote={'cf-connecting-ip':'203.0.113.9'};
+ assert.equal(await gate({}),'ok');
+ assert.equal(await makeGate()(remote),'closed');
+ assert.equal(await makeGate()({'x-forwarded-for':'203.0.113.9'}),'closed');
+ assert.equal(await gate(remote),'login');
+ assert.equal(await gate({...remote,...basic('right:one')}),'ok');
+ for(let i=0;i<5;i++)assert.equal(await gate({...remote,...basic('wrong')}),'login');
+ assert.equal(await gate({...remote,...basic('right:one')}),'locked');
+ assert.equal(await gate({'cf-connecting-ip':'198.51.100.2',...basic('right:one')}),'ok');
+ clock=15*60_000+1;
+ assert.equal(await gate({...remote,...basic('right:one')}),'ok');
+});
+
+test('a relayed request passes only with an Access token signed for this site, unexpired and from an allowed email',async ()=>{
+ const pair=generateKeyPairSync('rsa',{modulusLength:2048}),stranger=generateKeyPairSync('rsa',{modulusLength:2048});
+ const part=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+ const token=(claims,key=pair.privateKey)=>{
+  const data=`${part({alg:'RS256',kid:'k1'})}.${part({iss:'https://team.cloudflareaccess.com',aud:['site'],exp:1000,email:'Me@example.com',...claims})}`;
+  return `${data}.${sign('RSA-SHA256',Buffer.from(data),key).toString('base64url')}`;
+ };
+ const access={issuer:'https://team.cloudflareaccess.com',aud:'site',emails:['me@example.com']};
+ const gate=makeGate({access,now:()=>500_000,loadKeys:async()=>[{...pair.publicKey.export({format:'jwk'}),kid:'k1'}]});
+ const visit=jwt=>gate({'cf-connecting-ip':'203.0.113.9',...(jwt&&{'cf-access-jwt-assertion':jwt})});
+ const table={valid:[token({}),'ok'],'no token':[null,'denied'],'another site':[token({aud:['other']}),'denied'],expired:[token({exp:499}),'denied'],
+  'another team':[token({iss:'https://evil.cloudflareaccess.com'}),'denied'],'another email':[token({email:'you@example.com'}),'denied'],
+  'forged signature':[token({},stranger.privateKey),'denied'],garbage:['a.b.c','denied']};
+ for(const [name,[jwt,verdict]] of Object.entries(table))assert.equal(await visit(jwt),verdict,name);
+});
+
+test('setup adds its section once, keeps what a project already wrote, and has nothing left to do on a second run',()=>{
+ const project=mkdtempSync(join(tmpdir(),'monitor-setup-')),mine='# Mine\n\nKeep this.\n';
+ writeFileSync(join(project,'CLAUDE.md'),mine);
+ apply(plan(project).writes);
+ assert.ok(readFileSync(join(project,'CLAUDE.md'),'utf8').startsWith(mine));
+ for(const name of ['CLAUDE.md','AGENTS.md'])assert.equal(readFileSync(join(project,name),'utf8').split('agent-monitor:start').length,2,name);
+ assert.ok(parseCard(readFileSync(join(project,'tasks','TEMPLATE.md'),'utf8')));
+ assert.deepEqual(plan(project).writes,[]);
+});

@@ -1,0 +1,9 @@
+{
+  "name": "agent-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Live local dashboard for coding agents (Claude Code, Codex) working a task board.",
+  "scripts": {"start": "node server.mjs", "test": "node --test"},
+  "engines": {"node": ">=22"}
+}

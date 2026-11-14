@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent monitor</title>
+<script>try{const theme=localStorage.getItem('theme');if(theme)document.documentElement.dataset.theme=theme;}catch{}</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+ <div class="brand"><span class="live off" id="live" title="Connection to the monitor"></span><b>Agent monitor</b><span class="project" id="project"></span></div>
+ <div class="top-right">
+  <div class="window" id="window" role="group" aria-label="Time window"></div>
+  <div class="window" id="alerts" role="group" aria-label="Alerts"></div>
+  <div class="window" id="theme" role="group" aria-label="Theme"></div>
+  <time id="clock"></time>
+ </div>
+</header>
+
+<section class="tiles">
+ <div class="tile"><h3>Agents running</h3><div class="big"><span id="agents">–</span></div><p id="agents-sub"></p></div>
+ <div class="tile"><h3>CPU</h3><div class="big"><span id="cpu">–</span><small>%</small><em class="warn" id="cpu-warn" hidden>▲ heavy</em></div><canvas class="spark" id="cpu-spark"></canvas><p id="cpu-sub">last 10 minutes</p></div>
+ <div class="tile"><h3>Memory</h3><div class="big"><span id="mem">–</span><small>GB</small></div><div class="meter"><i id="mem-bar"></i></div><p id="mem-sub"></p></div>
+ <div class="tile"><h3>Tokens</h3><div class="big"><span id="tokens">–</span></div><canvas class="spark" id="burn-spark"></canvas><p id="tokens-sub"></p></div>
+ <div class="tile"><h3>Usage limits</h3><div class="limits" id="limits"></div></div>
+ <div class="tile"><h3>Board</h3><div class="counts" id="counts"></div><p id="board-sub"></p></div>
+</section>
+
+<section class="board">
+ <div class="row axis-row">
+  <div class="info legend" id="legend"></div>
+  <canvas id="axis"></canvas>
+  <div class="metrics head">tokens</div>
+ </div>
+ <div id="flight"></div>
+ <div id="sessions"></div>
+ <div id="earlier"></div>
+</section>
+
+<section class="lists" id="lists"></section>
+<aside id="panel" hidden aria-label="Task details">
+ <button class="close" id="panel-close" aria-label="Close">✕</button>
+ <div id="panel-head"></div>
+ <div id="panel-body"></div>
+</aside>
+<div id="toasts" aria-live="polite"></div>
+<div id="tip" hidden></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
