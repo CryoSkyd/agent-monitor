@@ -799,3 +799,35 @@ events.addEventListener('history',event=>{cpuHistory=JSON.parse(event.data);});
 events.addEventListener('sys',event=>{sys=JSON.parse(event.data);cpuHistory.push([sys.t,sys.cpu]);if(cpuHistory.length>600)cpuHistory.shift();renderSystem();});
 setInterval(tick,1000);
 addEventListener('resize',draw);
+
+// The task column's width is the viewer's own choice, kept in this browser.
+{
+ const grip=$('col-grip'),root=document.documentElement,MIN=180;
+ const setWidth=width=>{
+  if(width==null)root.style.removeProperty('--info-w');
+  else{
+   const room=grip.parentElement.clientWidth-32-92-28-160;
+   root.style.setProperty('--info-w',`${Math.round(Math.max(MIN,Math.min(width,Math.max(MIN,room))))}px`);
+  }
+  draw();
+ };
+ const current=()=>$('legend').getBoundingClientRect().width;
+ const save=()=>{const width=root.style.getPropertyValue('--info-w');if(width)localStorage.setItem('taskWidth',parseInt(width));else localStorage.removeItem('taskWidth');};
+ const saved=Number(localStorage.getItem('taskWidth'));
+ if(saved)setWidth(saved);
+ grip.addEventListener('pointerdown',event=>{
+  event.preventDefault();grip.setPointerCapture(event.pointerId);grip.classList.add('dragging');
+  const offset=event.clientX-current();
+  const move=event=>setWidth(event.clientX-offset);
+  const done=()=>{grip.classList.remove('dragging');grip.removeEventListener('pointermove',move);save();};
+  grip.addEventListener('pointermove',move);
+  grip.addEventListener('pointerup',done,{once:true});
+  grip.addEventListener('pointercancel',done,{once:true});
+ });
+ grip.addEventListener('dblclick',()=>{setWidth(null);save();});
+ grip.addEventListener('keydown',event=>{
+  const step={ArrowLeft:-20,ArrowRight:20}[event.key];
+  if(!step)return;
+  event.preventDefault();setWidth(current()+step);save();
+ });
+}

@@ -132,11 +132,15 @@ details.file p{padding:6px 10px}
 .board{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .group{padding:10px 16px 6px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);border-top:1px solid var(--line);display:flex;gap:8px}
 .group span{font-weight:400}
-.row{display:grid;grid-template-columns:minmax(260px,380px) 1fr 92px;gap:14px;align-items:center;padding:9px 16px;border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:var(--info-w,minmax(260px,380px)) 1fr 92px;gap:14px;align-items:center;padding:9px 16px;border-top:1px solid var(--line)}
 .group+.row{border-top:0}
 .row.compact{padding:5px 16px}
 .row.compact .info{opacity:.82}
 .axis-row{border-top:0;padding-top:12px;padding-bottom:4px;align-items:end}
+.axis-row>*{grid-row:1}
+.axis-row .legend{grid-column:1}
+.col-grip{grid-column:1;justify-self:end;align-self:stretch;width:10px;min-height:18px;margin-right:-12px;cursor:col-resize;touch-action:none;border-radius:3px;background:linear-gradient(var(--line),var(--line)) center/2px 100% no-repeat}
+.col-grip:hover,.col-grip:focus-visible,.col-grip.dragging{background-image:linear-gradient(var(--text-3),var(--text-3));outline:none}
 .info{min-width:0;display:flex;flex-direction:column;gap:3px}
 .l1{display:flex;gap:8px;align-items:baseline;min-width:0}
 .id{font:600 12px var(--mono);color:var(--text-2);flex:none}
@@ -233,6 +237,8 @@ canvas.lane,#axis{width:100%;display:block}
  .row .metrics{grid-column:2;grid-row:1}
  .row canvas.lane,.row #axis{grid-column:1/-1;grid-row:2}
  .axis-row .legend{grid-column:1/-1}
+ .axis-row>*{grid-row:auto}
+ .col-grip{display:none}
  .axis-row .metrics.head{display:none}
  .l2,.l3{flex-wrap:wrap;white-space:normal}
  .runs{grid-template-columns:1fr 1fr}

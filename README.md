@@ -142,6 +142,7 @@ A session is shown under the name in its transcript. One without a name gets the
 To give one your own name, use the pencil beside it in the Sessions list: type, then press Enter. Escape cancels, and saving an empty name brings the automatic one back. Task rows have no pencil, because their title opens the task card.
 
 - A machine can be renamed the same way, with the pencil beside its name in the CPU tile, once more than one machine is shown. The new name is used everywhere on the page.
+- The task column can be made wider or narrower: drag the thin bar between the legend and the time axis. Double-click it to go back to the usual width. The width is kept in your browser.
 - **Hide** beside the pencil moves a session you do not care about into a closed Hidden section at the end of the list. Open that section and use **Show** to bring one back. A hidden session raises no alerts; its tokens still count in the totals.
 - Names are kept in `~/.agent-monitor/names.json` (`namesFile` in the config) on the machine whose page you used. Hidden sessions are kept beside it in `hidden.json` (`hiddenFile`). Transcripts and agents are never written to; names and hiding are the only things the page can change.
 - A name given here wins over the one in the transcript.
