@@ -44,13 +44,16 @@ const sharing=config.share?ensureSecret(config.secretFile):null;
 const secret=sharing?.secret??readSecret(config.secretFile);
 if(sharing?.created)console.log(`Created the shared secret in ${sharing.file}. Copy that file to the same place on the other machines.`);
 const peers=new Peers(config.peers,{secret});
-const machinesText=withHistory=>JSON.stringify({local:config.machine,peers:peers.machines(withHistory)});
+// A machine keeps its real name as its key; the name given to it on the page is only what is shown.
+const machineLabel=name=>names.get(`machine:${name}`)||name;
+const machinesText=withHistory=>JSON.stringify({local:machineLabel(config.machine),localKey:config.machine,peers:peers.machines(withHistory).map(peer=>({...peer,key:peer.name,name:machineLabel(peer.name)}))});
 let version=0,lastSample=null;
 const names=new Names(config.namesFile),hidden=new Hidden(config.hiddenFile);
 function rebuild(now){
  const snapshot=monitor.snapshot(now,pulls.list,peers.size?{machine:config.machine,...peers.remote()}:null);
  snapshot.version=VERSION;
  names.apply(snapshot.runs);
+ for(const run of snapshot.runs)if(run.machine)run.machine=machineLabel(run.machine);
  hidden.apply(snapshot.runs);
  const text=JSON.stringify(snapshot);
  lastBuild=now;dirty=false;
@@ -125,6 +128,7 @@ const server=createServer(async (request,response)=>{
   if(typeof given?.run!=='string'||!given.run||given.run.length>300||typeof (hiding?given.hidden:given.name)!==(hiding?'boolean':'string')){json(response,400,{error:'Not accepted'});return;}
   const saved=hiding?{hidden:hidden.set(given.run,given.hidden)}:{name:names.set(given.run,given.name)};
   rebuild(Date.now());
+  if(peers.size){const text=machinesText();for(const client of clients)send(client,'machines',text);}
   json(response,200,saved);
   return;
  }

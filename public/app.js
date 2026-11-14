@@ -6,6 +6,7 @@ const MARK_LABEL={pr:'PR opened',merge:'PR merged',verdict:'Review comment',push
 const IN_FLIGHT=['coding','review','awaiting-review','changes','claimed'];
 const LANE=9,LANE_GAP=3,PAD=4,CTX_WARN=80,ALERT_REPEAT=1800;
 
+let renaming=false;
 let snap=null,sys=null,machines=null,peerHistory={},cpuHistory=[],windowHours=Number(localStorage.getItem('window'))||3,colors={};
 const expanded=new Set();
 let panel=null;
@@ -111,11 +112,11 @@ function renderTiles(v){
 
 /** Every machine's load, this one first. With no other machines listed there is just this one, unnamed. */
 function machineLoads(){
- const own={name:machines?.local??'',load:sys,history:cpuHistory,note:'',version:snap?.version};
+ const own={name:machines?.local??'',key:machines?.localKey,load:sys,history:cpuHistory,note:'',version:snap?.version};
  if(!machines?.peers.length)return [own];
  return [own,...machines.peers.map(peer=>{
   const up=peer.ok&&peer.cpu!=null;
-  return {name:peer.name,version:peer.version,load:up?peer:null,history:up?peerHistory[peer.name]??[]:[],note:up?'':peer.ok?'starting':`unreachable: ${peer.error}`};
+  return {name:peer.name,key:peer.key,version:peer.version,load:up?peer:null,history:up?peerHistory[peer.key]??[]:[],note:up?'':peer.ok?'starting':`unreachable: ${peer.error}`};
  })];
 }
 const gigabytes=bytes=>(bytes/2**30).toFixed(1);
@@ -124,8 +125,9 @@ function renderSystem(){
  // One colour per machine, shared by its CPU line and its legend entry.
  const palette=[colors.accent,colors.cats[3],colors.cats[2],colors.cats[4],colors.cats[6],colors.cats[1]];
  for(const id of ['cpu','mem'])$(id).closest('.tile').classList.toggle('many',many);
- if(many){
-  setHtml('cpu-legend',loads.map(({name,load,note,version},i)=>`<span title="${esc([note||`${load.cores} threads`,version&&`agent-monitor v${version}`].filter(Boolean).join(' · '))}"><i class="dot" style="--c:${palette[i%palette.length]}"></i>${esc(name)}<b class="${load?.cpu>=85?'hot':''}">${load?`${Math.round(load.cpu)}%`:'–'}</b></span>`).join(''));
+ // A machine name being typed would be wiped by a redraw, so these two hold still until it is saved or dropped.
+ if(many&&!renaming){
+  setHtml('cpu-legend',loads.map(({name,key,load,note,version},i)=>`<span title="${esc([note||`${load.cores} threads`,version&&`agent-monitor v${version}`].filter(Boolean).join(' · '))}"><i class="dot" style="--c:${palette[i%palette.length]}"></i><span>${esc(name)}</span><button class="rename" data-rename="machine:${esc(key)}" data-name="${esc(name)}" title="Rename this machine on this dashboard" aria-label="Rename ${esc(name)}">✎</button><b class="${load?.cpu>=85?'hot':''}">${load?`${Math.round(load.cpu)}%`:'–'}</b></span>`).join(''));
   setHtml('mem-rows',loads.map(({name,load,note})=>{
    if(!load)return `<div class="mem-row"><span>${esc(name)}</span><em>${esc(note)}</em><div class="meter"><i style="width:0"></i></div></div>`;
    const share=100*load.memUsed/load.memTotal;
@@ -422,7 +424,6 @@ function render(){
 
 /* ---------- renaming a session ---------- */
 
-let renaming=false;
 document.addEventListener('click',event=>{
  const pencil=event.target.closest?.('[data-rename]');
  if(!pencil||renaming)return;
@@ -442,13 +443,18 @@ document.addEventListener('click',event=>{
     if(!response.ok)throw new Error();
     const run=snap.runs.find(run=>run.id===pencil.dataset.rename);
     const saved=(await response.json()).name;
+    const key=pencil.dataset.rename.startsWith('machine:')?pencil.dataset.rename.slice(8):null;
+    if(key!=null&&machines){
+     if(machines.localKey===key)machines.local=saved||key;
+     for(const peer of machines.peers)if(peer.key===key)peer.name=saved||key;
+    }
     if(run&&saved){run.auto??=run.title;run.title=saved;}
     else if(run&&run.auto!=null){run.title=run.auto;delete run.auto;}
    }catch{raise('The name was not saved','The dashboard did not accept it.');}
   }
   // The rows were changed by hand, so what was last drawn no longer matches what is remembered.
-  for(const id of ['flight','sessions','earlier'])delete html[id];
-  render();
+  for(const id of ['flight','sessions','earlier','cpu-legend','mem-rows'])delete html[id];
+  render();renderSystem();
  };
  input.addEventListener('keydown',key=>{if(key.key==='Enter')finish(true);else if(key.key==='Escape')finish(false);});
  input.addEventListener('blur',()=>finish(true));
@@ -784,8 +790,8 @@ events.addEventListener('snap',event=>{if(!event.data)return;const first=!snap;s
 events.addEventListener('machines',event=>{
  machines=JSON.parse(event.data);
  for(const peer of machines.peers){
-  if(peer.history)peerHistory[peer.name]=peer.history;
-  else if(peer.ok&&peer.cpu!=null){const history=peerHistory[peer.name]??=[];history.push([Date.now(),peer.cpu]);if(history.length>300)history.shift();}
+  if(peer.history)peerHistory[peer.key]=peer.history;
+  else if(peer.ok&&peer.cpu!=null){const history=peerHistory[peer.key]??=[];history.push([Date.now(),peer.cpu]);if(history.length>300)history.shift();}
  }
  renderSystem();
 });
