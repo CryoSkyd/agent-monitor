@@ -1,120 +1,183 @@
-// Usage: node tools/demo.mjs [--port 4600]
-// Writes an invented project with invented transcripts to a temporary folder and serves the dashboard on it.
+// Usage: node tools/demo.mjs [--theme theme.json] [--port 4600]
+// Serves the dashboard on an invented project whose agents keep working: transcripts and task cards are written to a temporary folder as time passes.
+// A theme file names the project and its tasks: {"name": "my-project", "tasks": [{"title": "Add cart totals endpoint", "area": "cart"}]}
 import {spawn} from 'node:child_process';
-import {mkdirSync,rmSync,writeFileSync} from 'node:fs';
+import {appendFileSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {claudeSlug} from '../lib/discover.mjs';
 
-const root=join(tmpdir(),'agent-monitor-demo'),home=join(root,'home'),project=join(root,'orbit-shop');
-const now=Date.now(),MIN=60_000,iso=ms=>new Date(ms).toISOString();
-let seed=11;
-const rand=()=>(seed=(seed*1103515245+12345)%2147483648)/2147483648;
-const between=(low,high)=>Math.round(low+rand()*(high-low));
+const DEFAULT={name:'orbit-shop',tasks:[
+ ['Add cart totals endpoint','cart'],['Paginate order history','orders'],['Retry failed webhook deliveries','webhooks'],['Cache product search results','search'],
+ ['Fix timezone in invoice dates','invoices'],['Export orders as CSV','exports'],['Rotate API signing keys','auth'],['Dark mode for the admin pages','admin'],
+ ['Validate shipping addresses','shipping'],['Send low-stock alerts','inventory'],['Apply discount codes at checkout','checkout'],['Resize product images on upload','media'],
+].map(([title,area])=>({title,area}))};
+
+const args=process.argv.slice(2),flag=name=>args.includes(name)?args[args.indexOf(name)+1]:undefined;
+const given=flag('--theme')?JSON.parse(readFileSync(flag('--theme'),'utf8')):DEFAULT;
+const word=(text,fallback)=>String(text??'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||fallback;
+const theme={name:word(given.name,'demo'),tasks:(given.tasks??[]).filter(task=>task?.title).map(task=>({title:String(task.title).replace(/\s+/g,' '),area:word(task.area,'core')}))};
+if(theme.tasks.length<4){console.error('A theme needs a name and at least 4 tasks, each with a title and an area.');process.exit(2);}
+
+const root=join(tmpdir(),'agent-monitor-demo'),home=join(root,'home'),project=join(root,theme.name);
+const MIN=60_000,HOUR=60*MIN,iso=ms=>new Date(ms).toISOString();
+const between=(low,high)=>Math.round(low+Math.random()*(high-low));
 const save=(path,text)=>{mkdirSync(dirname(path),{recursive:true});writeFileSync(path,text);};
-const jsonl=(path,lines)=>save(path,lines.map(line=>JSON.stringify(line)).join('\n')+'\n');
 rmSync(root,{recursive:true,force:true});
 
-const CARDS=[
- ['T-101','Add cart totals endpoint','done','coder','task/T-101-cart-totals',41,[]],
- ['T-102','Paginate order history','in-review','coder','task/T-102-order-pages',42,[]],
- ['T-103','Retry failed webhook deliveries','claimed','coder','task/T-103-webhook-retries','',[]],
- ['T-104','Cache product search results','claimed','codex','task/T-104-search-cache','',[]],
- ['T-105','Fix timezone in invoice dates','changes-requested','coder','task/T-105-invoice-dates',43,[]],
- ['T-106','Export orders as CSV','ready','','','',['T-102']],
- ['T-107','Rotate API signing keys','ready','','','',[],'manual'],
- ['T-108','Dark mode for the admin pages','proposed','','','',[]],
-];
-for(const [id,title,status,agent,branch,pr,deps,dispatch] of CARDS){
- save(join(project,'tasks',`${id}.md`),`---\nid: ${id}\ntitle: ${title}\nstatus: ${status}\nagent: ${agent}\nbranch: ${branch}\npr: ${pr}\ndepends_on: [${deps.join(', ')}]\n${dispatch?`dispatch: ${dispatch}\n`:''}---\n`);
+/* ---------- task cards ---------- */
+const cards=[];
+let nextId=101,nextPr=41;
+function saveCard(card){
+ save(join(project,'tasks',`${card.id}.md`),`---\nid: ${card.id}\ntitle: ${card.title}\nstatus: ${card.status}\nagent: ${card.agent}\nbranch: ${card.branch}\npr: ${card.pr}\ndepends_on: [${card.deps.join(', ')}]\n${card.manual?'dispatch: manual\n':''}---\n`);
 }
+function addCard(status){
+ const index=nextId-101,{title,area}=theme.tasks[index%theme.tasks.length];
+ const card={id:`T-${nextId++}`,title,area,status,agent:'',branch:'',pr:'',round:1,manual:index===6,deps:index===5?[`T-${nextId-2}`]:[]};
+ cards.push(card);saveCard(card);
+ return card;
+}
+const done=id=>cards.find(card=>card.id===id)?.status==='done';
+const roleFor=card=>card.status==='in-review'?'reviewer':card.status==='changes-requested'||(card.status==='ready'&&!card.manual&&card.deps.every(done))?'coder':null;
 
-/** The work loop an invented agent repeats: [tool, input, seconds, fails]. */
-const steps=area=>[
- ['Read',{file_path:`src/${area}/index.ts`},2],
- ['Grep',{pattern:area,path:'src'},3],
- ['Read',{file_path:`src/${area}/store.ts`},2],
- ['Edit',{file_path:`src/${area}/index.ts`},5],
- ['Bash',{command:`npm test -- ${area}`},between(25,70)],
- ['Edit',{file_path:`tests/${area}.test.ts`},6],
- ['Bash',{command:'npm run build'},between(20,40)],
+/* ---------- transcripts ---------- */
+const turn=value=>typeof value==='function'?value():value;
+const work=(area,flaky=0)=>[
+ ['Read',{file_path:`src/${area}/index.ts`},2],['Grep',{pattern:area,path:'src'},3],['Read',{file_path:`src/${area}/store.ts`},2],['Edit',{file_path:`src/${area}/index.ts`},5],
+ ['Bash',{command:`npm test -- ${area}`},()=>between(25,70),flaky],['Edit',{file_path:`tests/${area}.test.ts`},6],['Bash',{command:'npm run build'},()=>between(20,40)],
  ['Bash',{command:`git commit -am "Update ${area}"`},3],
 ];
 
-function claudeRun(path,{start,end,prompt,model,area,context=40_000,compactAt,live,loop=steps(area)}){
- const lines=[{type:'user',timestamp:iso(start),message:{role:'user',content:prompt}}];
+function* claudeLines({start,end,prompt,model,loop,context=40_000}){
  let t=start,n=0,size=context;
  const usage=()=>({input_tokens:between(300,1500),cache_creation_input_tokens:between(1500,5000),cache_read_input_tokens:size,output_tokens:between(150,900)});
- const say=(content,stop='tool_use')=>lines.push({type:'assistant',timestamp:iso(t),message:{id:`m${n}`,model,stop_reason:stop,usage:usage(),content}});
+ const say=(content,stop)=>[t,{type:'assistant',timestamp:iso(t),message:{id:`m${n}`,model,stop_reason:stop,usage:usage(),content}}];
+ yield [t,{type:'user',timestamp:iso(t),message:{role:'user',content:prompt}}];
  for(;;){
   const [name,input,seconds,fails]=loop[n%loop.length];
   t+=between(4,35)*1000;
   if(t>=end)break;
-  if(compactAt&&t>=compactAt){lines.push({type:'system',subtype:'compact_boundary',timestamp:iso(t)});size=Math.round(size*.4);compactAt=0;}
+  if(size>600_000){yield [t,{type:'system',subtype:'compact_boundary',timestamp:iso(t)}];size=Math.round(size*.3);}
   n++;size+=between(2500,7000);
-  say([{type:'tool_use',id:`t${n}`,name,input}]);
-  t+=seconds*1000;
-  if(t>=end){if(!live)lines.pop();break;}
-  lines.push({type:'user',timestamp:iso(t),message:{role:'user',content:[{type:'tool_result',tool_use_id:`t${n}`,is_error:Boolean(fails),content:fails?'3 tests failed':'ok'}]}});
+  yield say([{type:'tool_use',id:`t${n}`,name,input}],'tool_use');
+  t+=turn(seconds)*1000;
+  const failed=Math.random()<(fails??0);
+  yield [t,{type:'user',timestamp:iso(t),message:{role:'user',content:[{type:'tool_result',tool_use_id:`t${n}`,is_error:failed,content:failed?'3 tests failed':'ok'}]}}];
  }
- if(!live){t=end;n++;say([{type:'text',text:'Done. Tests and build pass.'}],'end_turn');}
- jsonl(path,lines);
+ n++;
+ yield say([{type:'text',text:'Done. Tests and build pass.'}],'end_turn');
 }
 
-/** Usage limits that rise through the last hours, so the forecast has a trend to show. */
-const limits=ts=>({plan_type:'pro',
- primary:{used_percent:Math.round(Math.max(20,74-(now-ts)/MIN*.38)),window_minutes:300,resets_at:Math.round((now+95*MIN)/1000)},
- secondary:{used_percent:Math.round(Math.max(40,57-(now-ts)/MIN*.03)),window_minutes:10080,resets_at:Math.round((now+3.2*1440*MIN)/1000)}});
+/** A usage limit that climbs through its window and resets, so the meters and the forecast keep moving. */
+function limit(t,period,peak,phase){
+ const turns=t/period+phase;
+ return {used:Math.round(6+(turns%1)*peak),resets:Math.round((Math.floor(turns)+1-phase)*period/1000)};
+}
+function codexLimits(t){
+ const short=limit(t,5*HOUR,80,.15),week=limit(t,168*HOUR,70,.4);
+ return {plan_type:'pro',primary:{used_percent:short.used,window_minutes:300,resets_at:short.resets},secondary:{used_percent:week.used,window_minutes:10080,resets_at:week.resets}};
+}
+function saveClaudeLimits(t){
+ const short=limit(t,5*HOUR,60,.6),week=limit(t,168*HOUR,85,.75);
+ save(join(home,'.agent-monitor','claude-limits.json'),JSON.stringify({asOf:t,rate_limits:{five_hour:{used_percentage:short.used,resets_at:short.resets},seven_day:{used_percentage:week.used,resets_at:week.resets}}}));
+}
 
-function codexRun(name,{start,end,prompt,area,live}){
- const item=(ts,type,payload)=>({timestamp:iso(ts),type,payload});
- const lines=[item(start,'session_meta',{id:name,session_id:name,cwd:project,originator:'codex_exec',source:'exec',timestamp:iso(start)}),
-  item(start,'turn_context',{model:'gpt-6.1-sol',effort:'high'}),
-  item(start,'response_item',{type:'message',role:'user',content:[{type:'input_text',text:prompt}]})];
+function* codexLines({start,end,prompt,area,name}){
+ const item=(type,payload)=>[t,{timestamp:iso(t),type,payload}];
  const loop=[`sed -n 1,80p src/${area}/index.ts`,`rg ${area} src`,'apply_patch',`npm test -- ${area}`,'git status','npm run build'];
  let t=start,n=0,input=0,cached=0,out=0,last=30_000;
+ yield item('session_meta',{id:name,session_id:name,cwd:project,originator:'codex_exec',source:'exec',timestamp:iso(start)});
+ yield item('turn_context',{model:'gpt-6.1-sol',effort:'high'});
+ yield item('response_item',{type:'message',role:'user',content:[{type:'input_text',text:prompt}]});
  for(;;){
   const cmd=loop[n%loop.length];
   t+=between(5,30)*1000;
   if(t>=end)break;
   n++;
-  lines.push(item(t,'response_item',{type:'custom_tool_call',call_id:`c${n}`,name:'exec',input:cmd==='apply_patch'?'apply_patch':`text(await tools.exec_command({cmd:"${cmd}"}))`}));
+  yield item('response_item',{type:'custom_tool_call',call_id:`c${n}`,name:'exec',input:cmd==='apply_patch'?'apply_patch':`text(await tools.exec_command({cmd:"${cmd}"}))`});
   t+=(/npm/.test(cmd)?between(20,60):between(2,6))*1000;
-  if(t>=end){if(!live)lines.pop();break;}
-  lines.push(item(t,'response_item',{type:'custom_tool_call_output',call_id:`c${n}`,output:[JSON.stringify({exit_code:0,output:'ok'})]}));
+  yield item('response_item',{type:'custom_tool_call_output',call_id:`c${n}`,output:[JSON.stringify({exit_code:0,output:'ok'})]});
   cached+=last;last+=between(1500,4000);input+=last;out+=between(200,900);
-  lines.push(item(t,'event_msg',{type:'token_count',info:{total_token_usage:{input_tokens:input,cached_input_tokens:cached,output_tokens:out},last_token_usage:{input_tokens:last},model_context_window:400_000},rate_limits:limits(t)}));
+  yield item('event_msg',{type:'token_count',info:{total_token_usage:{input_tokens:input,cached_input_tokens:cached,output_tokens:out},last_token_usage:{input_tokens:last},model_context_window:400_000},rate_limits:codexLimits(t)});
  }
- if(!live)lines.push(item(end,'event_msg',{type:'task_complete',last_agent_message:'Approved. Tests and build pass.'}));
- jsonl(join(home,'.codex','sessions','2026','01','01',`rollout-${name}.jsonl`),lines);
+ yield item('event_msg',{type:'task_complete',last_agent_message:'Done. Tests and build pass.'});
 }
 
+/** Writes a transcript line by line as its timestamps come due, so a tool call stays open until its result time. */
+class Writer{
+ constructor(path,lines){this.path=path;this.lines=lines;this.next=lines.next();mkdirSync(dirname(path),{recursive:true});}
+ /** Returns true once the transcript is complete. */
+ advance(now){
+  let text='';
+  while(!this.next.done&&this.next.value[0]<=now){text+=JSON.stringify(this.next.value[1])+'\n';this.next=this.lines.next();}
+  if(text)appendFileSync(this.path,text);
+  return this.next.done;
+ }
+}
+
+/* ---------- the invented team ---------- */
 const session=join(home,'.claude','projects',claudeSlug(project),'demo-session');
-let agents=0;
-function subagent(description,agentType,options){
- const path=join(session,'subagents',`agent-${++agents}.jsonl`);
- claudeRun(path,{model:'claude-opus-5-5',...options});
- save(path.replace(/\.jsonl$/,'.meta.json'),JSON.stringify({description,agentType,finished:!options.live}));
+const active=[];
+let runs=0,nextStart=0,architect;
+
+function startAgent(card,role,now){
+ const codex=Math.random()<(role==='reviewer'?.6:.35),review=role==='reviewer',number=++runs;
+ const end=now+(review?between(6,14):between(18,45))*MIN;
+ if(!review){
+  if(card.status==='changes-requested')card.round++;
+  Object.assign(card,{status:'claimed',agent:codex?'codex':'coder',branch:`task/${card.id}-${card.area}`});
+  saveCard(card);
+ }
+ const round=card.round>1&&!review?`, fix round ${card.round}`:'';
+ const prompt=review?`Act as Reviewer for PR #${card.pr} (${card.id})`:`Act as Coder for ${card.id}${round}`;
+ let writer,meta=null;
+ if(codex)writer=new Writer(join(home,'.codex','sessions','2026','01','01',`rollout-${number}.jsonl`),codexLines({start:now,end,prompt:prompt.replace('Act','act'),area:card.area,name:`demo-${number}`}));
+ else{
+  const path=join(session,'subagents',`agent-${number}.jsonl`);
+  // Now and then an agent gets stuck rerunning a failing test, which is what the dashboard's warnings are for.
+  const loop=!review&&Math.random()<.15?[['Bash',{command:`npm test -- ${card.area}`},40,1]]:work(card.area,card.round>1?.5:.1);
+  writer=new Writer(path,claudeLines({start:now,end,prompt,model:'claude-opus-5-5',loop,context:between(40_000,250_000)}));
+  meta={path:path.replace(/\.jsonl$/,'.meta.json'),description:review?`Reviewer ${card.id} PR ${card.pr}`:`Coder ${card.id} ${card.area}${round}`,agentType:role};
+  save(meta.path,JSON.stringify({...meta,path:undefined,finished:false}));
+ }
+ active.push({card,role,writer,meta});
 }
-const ago=minutes=>now-minutes*MIN,soon=now-15_000;
 
-subagent('Coder T-101 cart totals','coder',{start:ago(230),end:ago(190),prompt:'Act as Coder for T-101',area:'cart'});
-subagent('Coder T-102 order pages','coder',{start:ago(150),end:ago(95),prompt:'Act as Coder for T-102',area:'orders'});
-subagent('Coder T-105 invoice dates','coder',{start:ago(125),end:ago(100),prompt:'Act as Coder for T-105',area:'invoices'});
-subagent('Reviewer T-105 PR 43','reviewer',{start:ago(92),end:ago(80),prompt:'Act as Reviewer for PR #43 (T-105)',area:'invoices'});
-subagent('Coder T-103 webhook retries','coder',{start:ago(70),end:soon,live:true,prompt:'Act as Coder for T-103',area:'webhooks',context:240_000,compactAt:ago(28)});
-subagent('Coder T-105 fix round 2','coder',{start:ago(22),end:soon,live:true,prompt:'Act as Coder for T-105, fix round 2',area:'invoices',context:90_000,
- loop:[['Bash',{command:'npm test -- invoices'},40,true]]});
-codexRun('review-101',{start:ago(185),end:ago(170),prompt:'act as Reviewer for PR #41 (T-101)',area:'cart'});
-codexRun('code-104',{start:ago(48),end:soon,live:true,prompt:'act as Coder for T-104',area:'search'});
-codexRun('review-102',{start:ago(14),end:soon,live:true,prompt:'act as Reviewer for PR #42 (T-102)',area:'orders'});
-claudeRun(`${session}.jsonl`,{start:ago(235),end:soon,live:true,prompt:'Plan the next wave of order work and dispatch it',model:'claude-fable-5-2',context:120_000,
- loop:[['Read',{file_path:'tasks/T-106.md'},2],['Agent',{description:'Coder T-103 webhook retries'},between(900,1500)],['Bash',{command:'git status'},2],['Agent',{description:'Reviewer T-105 PR 43'},between(600,900)]]});
-save(join(home,'.agent-monitor','claude-limits.json'),JSON.stringify({asOf:now,rate_limits:{
- five_hour:{used_percentage:46,resets_at:Math.round((now+140*MIN)/1000)},seven_day:{used_percentage:83,resets_at:Math.round((now+2.1*1440*MIN)/1000)}}}));
+function finish({card,role,meta}){
+ if(meta)save(meta.path,JSON.stringify({...meta,path:undefined,finished:true}));
+ if(role==='coder'){card.pr||=nextPr++;card.status='in-review';}
+ else card.status=card.round<2&&Math.random()<.25?'changes-requested':'done';
+ saveCard(card);
+}
 
-const port=process.argv.includes('--port')?process.argv[process.argv.indexOf('--port')+1]:'4600';
-console.log(`Demo data written to ${root}`);
-spawn(process.execPath,[join(dirname(fileURLToPath(import.meta.url)),'..','server.mjs'),project,'--no-gh','--port',port],
+function tick(now){
+ for(const agent of [...active]){
+  if(!agent.writer.advance(now))continue;
+  active.splice(active.indexOf(agent),1);
+  finish(agent);
+ }
+ architect.advance(now);
+ saveClaudeLimits(now);
+ const count=status=>cards.filter(card=>card.status===status&&!card.manual).length;
+ while(count('ready')<2){const waiting=cards.find(card=>card.status==='proposed');if(waiting){waiting.status='ready';saveCard(waiting);}else addCard('ready');}
+ while(count('proposed')<2)addCard('proposed');
+ if(active.length>=4||now<nextStart)return;
+ const card=cards.find(card=>roleFor(card)&&!active.some(agent=>agent.card===card));
+ if(!card)return;
+ startAgent(card,roleFor(card),now);
+ nextStart=now+between(30,240)*1000;
+}
+
+const started=Date.now(),history=3*HOUR;
+architect=new Writer(`${session}.jsonl`,claudeLines({start:started-history,end:Infinity,prompt:`Plan the next wave of ${theme.name} work and dispatch it`,model:'claude-fable-5-2',context:120_000,
+ loop:[['Glob',{pattern:'tasks/*.md'},2],['Agent',{description:'Coder for the next ready task'},()=>between(600,1500)],['Bash',{command:'git status'},2],['Agent',{description:'Reviewer for the open pull request'},()=>between(400,900)]]}));
+for(let i=0;i<6;i++)addCard('ready');
+for(let t=started-history;t<started;t+=15_000)tick(t);
+setInterval(()=>tick(Date.now()),2000);
+
+console.log(`Demo project "${theme.name}" with ${theme.tasks.length} task topics, written to ${root}`);
+const server=spawn(process.execPath,[join(dirname(fileURLToPath(import.meta.url)),'..','server.mjs'),project,'--no-gh','--port',flag('--port')??'4600'],
  {stdio:'inherit',env:{...process.env,HOME:home,USERPROFILE:home}});
+server.on('exit',code=>process.exit(code??0));
+for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>{server.kill();process.exit(0);});

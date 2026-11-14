@@ -16,7 +16,7 @@ node server.mjs <project folder | config.json> [--port 4599] [--hours 24] [--no-
 
 For example `node server.mjs ~/code/my-project`, then open http://127.0.0.1:4599. One server watches one project; run a second one on another port for another project.
 
-To look around before pointing it at a project, run `node tools/demo.mjs`. It writes an invented project to a temporary folder and serves the dashboard on it at port 4600.
+To look around before pointing it at a project, run `node tools/demo.mjs`, or `/monitor-demo` in Claude Code. It writes an invented project to a temporary folder, keeps its agents working for as long as it runs, and serves the dashboard on it at port 4600. See Demo, below.
 
 A project folder may hold its own `.agent-monitor.json`; it is read when the folder is the argument. Config files kept in `projects/` here are ignored by git, so personal paths stay out of the repository. If the port is taken the server moves to the next free one and prints it.
 
@@ -29,10 +29,11 @@ The repository is also a plugin and its own marketplace. From a local checkout:
 /plugin install agent-monitor@agent-monitor
 ```
 
-It adds two skills. Depending on the Claude Code version they are typed as `/setup-monitor` and `/monitor`, or with the plugin name in front: `/agent-monitor:setup-monitor`.
+It adds three skills. Depending on the Claude Code version they are typed as `/setup-monitor`, `/monitor` and `/monitor-demo`, or with the plugin name in front: `/agent-monitor:setup-monitor`.
 
 - `setup-monitor` makes a project ready (next section).
 - `monitor` starts the server for the current project and gives the URL.
+- `monitor-demo` runs the dashboard on invented data (Demo, below).
 
 ## Setting up a project
 
@@ -52,6 +53,22 @@ It writes three things and reports what the dashboard will find:
 - A task card template in the project's task folder (`docs/tasks`, `tasks` or `.tasks`, or a new `tasks`).
 
 Running it again replaces the section in place and touches nothing else. From then on, agents that follow the project instructions name the card when they start work, and `/monitor` shows their runs under that task. `skills/monitor/references/contract.md` has the full list of what a project provides.
+
+## Demo
+
+```
+node tools/demo.mjs [--theme theme.json] [--port 4600]
+```
+
+The demo shows about three hours of invented history at once and then keeps going: agents start, call tools, finish and hand over to reviewers, and new tasks keep arriving. Some agents are made to get stuck so the warnings show. Usage limits rise and reset on a loop. CPU and memory are the real machine's, and there is no pull request data. None of your own transcripts are read.
+
+A theme file sets the project name and task topics:
+
+```json
+{"name": "my-project", "tasks": [{"title": "Add cart totals endpoint", "area": "cart"}]}
+```
+
+It needs at least four tasks. In Claude Code, `/monitor-demo <subject>` has Claude write a theme about the subject first, so `/monitor-demo pokemon` gives a board of Pokémon tasks.
 
 ## What it reads
 
