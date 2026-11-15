@@ -7,7 +7,7 @@ import {appendFileSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:f
 import {tmpdir} from 'node:os';
 import {dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {claudeSlug} from '../lib/discover.mjs';
+import {claudeSlug} from '../lib/agents/claude.mjs';
 
 const DEFAULT={name:'orbit-shop',tasks:[
  ['Add cart totals endpoint','cart'],['Paginate order history','orders'],['Retry failed webhook deliveries','webhooks'],['Cache product search results','search'],

@@ -4,7 +4,8 @@ import {existsSync,readdirSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {CardStore} from '../lib/cards.mjs';
-import {claudeTranscripts,codexHomes} from '../lib/discover.mjs';
+import {claudeTranscripts} from '../lib/agents/claude.mjs';
+import {codexHomes} from '../lib/agents/codex.mjs';
 import {apply,plan} from '../lib/setup.mjs';
 
 const args=process.argv.slice(2),target=args.find(arg=>!arg.startsWith('--'));

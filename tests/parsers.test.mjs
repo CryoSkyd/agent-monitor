@@ -13,7 +13,9 @@ import {makePricer} from '../lib/prices.mjs';
 import {parseCard} from '../lib/cards.mjs';
 import {LimitHistory} from '../lib/forecast.mjs';
 import {splitDiff} from '../lib/github.mjs';
-import {ClaudeRun,CodexRun,TOOL_STALE,claudeWindow} from '../lib/runs.mjs';
+import {TOOL_STALE} from '../lib/run.mjs';
+import {ClaudeRun,claudeWindow} from '../lib/agents/claude.mjs';
+import {CodexRun} from '../lib/agents/codex.mjs';
 import {apply,plan} from '../lib/setup.mjs';
 import {CATS} from '../lib/timeline.mjs';
 
@@ -264,6 +266,48 @@ test('an ETA line the agent prints is kept as its estimate, the latest one wins,
  assert.equal(read([{timestamp:at(3),type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'Tests are slow. **ETA:** ~1.5 hours'}]}}]).min,30);
  assert.equal(read([{timestamp:at(3),type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'Tests are slow.'},{type:'output_text',text:'**ETA:** ~1.5 hours'}]}}]).min,90);
  assert.equal(read([{timestamp:at(4),type:'response_item',payload:{type:'message',role:'user',content:[{type:'input_text',text:'also fix the lint'}]}}]),null);
+});
+
+test('a Codex sleep or check on a background command counts as that command, and a sleep with nothing running counts as waiting',()=>{
+ const call=(second,id,name,input)=>({timestamp:at(second),type:'response_item',payload:{type:'custom_tool_call',call_id:id,name,input}});
+ const done=(second,id,output)=>({timestamp:at(second),type:'response_item',payload:{type:'custom_tool_call_output',call_id:id,output}});
+ const run=new CodexRun(transcript([
+  {timestamp:at(0),type:'session_meta',payload:{id:'a',session_id:'a',cwd:'/repo',originator:'codex_exec',source:'exec',timestamp:at(0)}},
+  {timestamp:at(1),type:'response_item',payload:{type:'message',role:'user',content:[{type:'input_text',text:'act as Coder for T-1'}]}},
+  call(2,'c1','exec','const r=await tools.exec_command({cmd:"cargo test",yield_time_ms:1000}); text(JSON.stringify(r));'),
+  done(4,'c1','{"session_id":4242,"output":""}'),
+  call(5,'c2','sleep','{"duration_ms":20000}'),
+  done(25,'c2',''),
+  call(26,'c3','exec','text(JSON.stringify(await tools.write_stdin({session_id:4242,chars:"",yield_time_ms:1000})));'),
+  done(31,'c3','{"exit_code":0,"output":"ok"}'),
+  call(32,'c4','sleep','{"duration_ms":10000}'),
+  done(42,'c4',''),
+ ]),shared(),{account:'codex'});
+ run.poll();
+ assert.deepEqual(run.calls.map(item=>item.cat),['testing','testing','testing','waiting']);
+ assert.match(run.calls[1].label,/^waiting for: cargo test/);
+ assert.deepEqual(run.waited,{n:3,ms:35000});
+});
+
+test('a Claude turn that ends while its background test is running counts as testing until the notice that it ended',()=>{
+ const usage={input_tokens:10,cache_creation_input_tokens:0,cache_read_input_tokens:0,output_tokens:5};
+ const lines=background=>[
+  {type:'user',timestamp:at(0),message:{role:'user',content:'Act as Coder for T-12'}},
+  {type:'assistant',timestamp:at(5),message:{id:'m1',model:'model-a',stop_reason:'tool_use',usage,content:[{type:'tool_use',id:'t1',name:'Bash',input:{command:background,run_in_background:true}}]}},
+  {type:'user',timestamp:at(6),message:{role:'user',content:[{type:'tool_result',tool_use_id:'t1',content:'Command running in background with ID: b123. Output is being written to a file.'}]}},
+  {type:'assistant',timestamp:at(10),message:{id:'m2',model:'model-a',stop_reason:'end_turn',usage,content:[{type:'text',text:'Waiting for it.'}]}},
+  {type:'user',timestamp:at(70),message:{role:'user',content:['<task-notification>','<task-id>b123</task-id>','<status>completed</status>','</task-notification>'].join(String.fromCharCode(10))}},
+  {type:'assistant',timestamp:at(75),message:{id:'m3',model:'model-a',stop_reason:'end_turn',usage,content:[{type:'text',text:'Done.'}]}},
+ ];
+ const read=command=>{const run=new ClaudeRun(transcript(lines(command)),shared(),{id:'s'});run.poll();return run;};
+ const tests=read('node --test tests/a.test.ts');
+ assert.deepEqual(cats(tests),['thinking:5','testing:1','thinking:4','testing:60','thinking:5']);
+ assert.deepEqual(tests.waited,{n:1,ms:60000});
+ assert.equal(tests.tl.cur.c,'idle');
+ // A background server never ends, so only builds and tests are waited for.
+ const server=read('node server.mjs');
+ assert.equal(server.waited.n,0);
+ assert.deepEqual(cats(server).slice(-2),['idle:60','thinking:5']);
 });
 
 test('a hidden session stays hidden after a restart until it is shown again',()=>{

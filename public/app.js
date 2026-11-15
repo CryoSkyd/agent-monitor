@@ -1,5 +1,5 @@
 const $=id=>document.getElementById(id);
-const CAT_LABEL={thinking:'Thinking',editing:'Editing',reading:'Reading',testing:'Testing / building',git:'Git / PR',delegating:'Delegating',command:'Running command',idle:'Idle'};
+const CAT_LABEL={thinking:'Thinking',editing:'Editing',reading:'Reading',testing:'Testing / building',git:'Git / PR',delegating:'Delegating',command:'Running command',idle:'Idle',waiting:'Waiting'};
 const PHASE_LABEL={coding:'Coding',review:'In review','awaiting-review':'Awaiting review',changes:'Changes requested',claimed:'Claimed · no agent',done:'Done',finished:'Finished','needs-you':'Needs you',queued:'Queued',blocked:'Blocked',unknown:'Unknown'};
 const STATUS_LABEL={working:'Working',waiting:'Waiting on agents',idle:'Idle',done:'Done',lost:'Stopped responding'};
 const MARK_LABEL={pr:'PR opened',merge:'PR merged',verdict:'Review comment',push:'Pushed',commit:'Commit',compact:'Context compacted'};
@@ -213,15 +213,21 @@ function rollup(id){
  const parts=[plural(runs.length,'run'),plural(reviews,'review'),`${fmtDur(working)} working`,`${fmtTok(sum(runs,work))} tokens`,cacheRate(runs)==null?'':`cache hit ${cacheRate(runs)}%`,priced.length?`≈ ${fmtCost(sum(priced,run=>run.cost))}`:''];
  return `<div class="mix-key rollup" title="${tokenTitle(runs)}"><span>Whole task, last ${snap.config.hours}h</span>${parts.filter(Boolean).map(part=>`<span><b>${part}</b></span>`).join('')}</div>`;
 }
+// What a lead wants beside two of the activities: how many model requests the thinking was, and how much of the build and test time was the agent waiting.
+function activityNote(cat,runs,seconds){
+ if(cat==='thinking'){const requests=sum(runs,run=>run.requests||0);return requests?`${requests} requests, ${fmtDur(seconds/requests,true)} each`:'';}
+ if(cat==='testing'){const waits=sum(runs,run=>run.waited?.n||0),waited=sum(runs,run=>run.waited?.s||0);return waits&&waited?`${fmtDur(waited)} of it waiting on a background run, ${plural(waits,'wait')}`:'';}
+ return '';
+}
+const CAT_HINT={thinking:'Time inside model requests: the gaps between tool calls. Waiting for the model service is part of it and cannot be told apart.',testing:'Build and test commands on this machine, including time the agent waited while one ran in the background.',git:'Git and GitHub commands, which mostly wait on the network.',command:'Commands that are not builds, tests, git, reading or editing.',waiting:'Sleeps and checks that could not be tied to a command the agent started.',delegating:'Waiting on agents this one started.'};
 function breakdown(runs,extra=''){
  const totals=activityTotals(runs),all=sum(totals,seconds=>seconds)||1;
  const parts=totals.map((seconds,i)=>({cat:snap.cats[i],seconds})).filter(part=>part.seconds>0);
  const bar=parts.map(part=>`<i style="flex:${part.seconds};--c:var(--cat-${part.cat})" title="${CAT_LABEL[part.cat]} ${fmtDur(part.seconds)}"></i>`).join('');
- const key=[...parts].sort((a,b)=>b.seconds-a.seconds).map(part=>`<span><i class="dot" style="--c:var(--cat-${part.cat})"></i>${CAT_LABEL[part.cat]} <b>${fmtDur(part.seconds)}</b> ${Math.round(100*part.seconds/all)}%</span>`).join('');
- // The row above cuts long names short, so the opened row spells out each agent in full.
- const who=`<div class="who">${runs.map(run=>`<p><b>${esc(run.title||run.role)}</b><span>${esc(chip(run))}</span></p>`).join('')}</div>`;
- const list=runs.length>1?`<div class="runs">${runs.map(run=>`<b title="${esc(run.title||run.role)}">${esc(run.title||run.role)}</b><span title="${esc(chip(run))}">${esc([run.machine,run.account,model(run.model),run.effort].filter(Boolean).join(' · '))}</span><span>${fmtClock(run.start)}–${run.end?fmtClock(run.end):'now'}</span><span title="${tokenTitle([run])}">${fmtTok(work(run))} tokens · ${effort(run)}</span>`).join('')}</div>`:`<div class="mix-key"><span>${runs.map(effort).join('')}</span></div>`;
- return `<div class="detail">${who}${extra}<div class="mix">${bar}</div><div class="mix-key">${key||'No activity recorded'}</div>${list}<div class="tools" data-tools="${esc(runs.map(run=>run.id).join(','))}"></div></div>`;
+ const key=[...parts].sort((a,b)=>b.seconds-a.seconds).map(part=>{const note=activityNote(part.cat,runs,part.seconds);return `<span title="${esc(CAT_HINT[part.cat]??'')}"><i class="dot" style="--c:var(--cat-${part.cat})"></i>${CAT_LABEL[part.cat]} <b>${fmtDur(part.seconds)}</b> ${Math.round(100*part.seconds/all)}%${note?` <em>${esc(note)}</em>`:''}</span>`;}).join('');
+ // The row above cuts long names short, so the opened row spells out each agent in full, once.
+ const who=`<div class="who">${runs.map(run=>`<p><b>${esc(run.title||run.role)}</b><span>${esc(chip(run))}</span><span>${fmtClock(run.start)}–${run.end?fmtClock(run.end):'now'}</span><span title="${tokenTitle([run])}">${fmtTok(work(run))} tokens · ${effort(run)}</span></p>`).join('')}</div>`;
+ return `<div class="detail">${who}${extra}<div class="mix">${bar}</div><div class="mix-key">${key||'No activity recorded'}</div><div class="tools" data-tools="${esc(runs.map(run=>run.id).join(','))}"></div></div>`;
 }
 const expander=key=>`<button class="exp" data-expand="${esc(key)}" aria-expanded="${expanded.has(key)}" title="Time by activity">${expanded.has(key)?'▾':'▸'}</button>`;
 const laneCanvas=runs=>{const count=Math.max(1,...lanes(runs).map(item=>item.lane+1));return `<canvas class="lane" data-runs="${esc(runs.map(run=>run.id).join(','))}" data-lanes="${count}"></canvas>`;};

@@ -156,6 +156,24 @@ An agent can say how long it expects its run to take by printing a line of its o
 - The latest line wins, counted from when it was printed. A new request to the same session clears it.
 - `/setup-monitor` adds the instruction to the conventions it writes, so agents that read them print the line.
 
+## Where the time goes
+
+Opening a task or session shows its time by activity. Two of the entries carry more detail:
+
+- **Thinking** is time inside model requests, the gaps between tool calls. It shows the number of requests and the seconds per request. Waiting for the model service is part of it and cannot be told apart.
+- **Testing / building** includes the time an agent waited for a build or test it had started in the background, and shows how much of the total that was.
+
+Agents wait in different ways, and both are counted as the command they wait for:
+
+- Codex starts a long command, then sleeps and checks on it until it ends.
+- Claude Code starts it in the background, ends its turn, and is told when it finishes. Only builds and tests are followed this way, since a background server never ends.
+
+A sleep or check that cannot be tied to a command the agent started is shown as **Waiting**.
+
+## Adding an agent
+
+Each kind of agent has one adapter file in `lib/agents/`, listed in `lib/agents/index.mjs`. An adapter says where that agent's transcripts are and how to read them, and builds on the shared base in `lib/run.mjs`. The comment in `index.mjs` describes what a new one must provide. Nothing else in the monitor names a particular agent.
+
 ## Tool calls
 
 ![An expanded task with its time split, cost and a table of tool statistics](docs/screenshots/task.png)
