@@ -253,6 +253,19 @@ test('an unattended Codex run may stay silent inside a command only as long as t
  assert.equal(claude.toolAllowance(),TOOL_STALE);
 });
 
+test('an ETA line the agent prints is kept as its estimate, the latest one wins, and a new request clears it',()=>{
+ const lines=[
+  {timestamp:at(0),type:'session_meta',payload:{id:'a',session_id:'a',cwd:'/repo',originator:'codex_exec',source:'exec',timestamp:at(0)}},
+  {timestamp:at(1),type:'response_item',payload:{type:'message',role:'user',content:[{type:'input_text',text:'act as Coder for T-1. Print one line ETA: <minutes> min'}]}},
+  {timestamp:at(2),type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'ETA: 30 min'}]}},
+ ];
+ const read=extra=>{const run=new CodexRun(transcript([...lines,...extra]),shared(),{account:'codex'});run.poll();return run.eta;};
+ assert.deepEqual(read([]),{min:30,at:Date.parse(at(2))});
+ assert.equal(read([{timestamp:at(3),type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'Tests are slow. **ETA:** ~1.5 hours'}]}}]).min,30);
+ assert.equal(read([{timestamp:at(3),type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'Tests are slow.'},{type:'output_text',text:'**ETA:** ~1.5 hours'}]}}]).min,90);
+ assert.equal(read([{timestamp:at(4),type:'response_item',payload:{type:'message',role:'user',content:[{type:'input_text',text:'also fix the lint'}]}}]),null);
+});
+
 test('a hidden session stays hidden after a restart until it is shown again',()=>{
  const file=join(mkdtempSync(join(tmpdir(),'monitor-hidden-')),'nested','hidden.json');
  const marked=()=>{const runs=[{id:'a'},{id:'b'}];new Hidden(file).apply(runs);return runs.map(run=>Boolean(run.hidden));};

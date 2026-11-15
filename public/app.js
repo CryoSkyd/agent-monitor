@@ -176,6 +176,8 @@ function drawBurn(v){
 
 // The machine comes first: the line is cut short when it does not fit, and where an agent runs matters more than its effort setting.
 const chip=run=>[run.machine,run.role,run.account,model(run.model),run.effort].filter(Boolean).join(' · ');
+// The estimate is the agent's own, printed in its run; the page only counts it down.
+const etaSpan=run=>run.eta&&run.status==='working'?`<span class="eta" data-due="${run.eta.due}" data-min="${run.eta.min}" title="The agent's own estimate for this run, from the ETA line it printed"></span>`:'';
 const chipSpan=text=>`<span class="chip" title="${esc(text)}">${esc(text)}</span>`;
 function liveLine(run){
  if(run.status==='working'){
@@ -245,7 +247,7 @@ function taskRow({task,runs},compact){
  }
  const who=working.length?working.map(chip).join(' + '):task.agent||'';
  const started=runs.length?`<span data-since="${Math.min(...runs.map(run=>run.start))}"></span>`:'';
- return `<div class="row"><div class="info">${head}<div class="l2">${pill}${pr}${chipSpan(who)}${started}</div>${detail}</div>${laneCanvas(runs)}<div class="metrics" title="${tokenTitle(runs)}"><b>${fmtTok(tokens)}</b>${context}<span>${sum(runs,run=>run.tools)} tool calls</span></div>${more}</div>`;
+ return `<div class="row"><div class="info">${head}<div class="l2">${pill}${pr}${chipSpan(who)}${started}${working.map(etaSpan).join('')}</div>${detail}</div>${laneCanvas(runs)}<div class="metrics" title="${tokenTitle(runs)}"><b>${fmtTok(tokens)}</b>${context}<span>${sum(runs,run=>run.tools)} tool calls</span></div>${more}</div>`;
 }
 
 function sessionRow(run){
@@ -254,7 +256,7 @@ function sessionRow(run){
  const context=contextMeter(run);
  const compact=run.status==='done'||run.status==='lost';
  const key=`run:${run.id}`;
- return `<div class="row ${compact?'compact':''}"><div class="info"><div class="l1">${expander(key)}<span class="title" title="${esc(hint)}">${esc(title)}</span><button class="rename" data-rename="${esc(run.id)}" data-name="${esc(title)}" title="Rename on this dashboard" aria-label="Rename ${esc(title)}">✎</button><button class="rename" data-hide="${esc(run.id)}" data-to="${run.hidden?'':'1'}" title="${run.hidden?'Put this session back in the list':'Move this session to the Hidden section'}">${run.hidden?'Show':'Hide'}</button></div><div class="l2"><span class="pill ${run.status}"><i></i>${STATUS_LABEL[run.status]}</span>${chipSpan(chip(run))}${compact?'':`<span data-since="${run.start}"></span>`}</div>${liveLine(run)}</div>${laneCanvas([run])}<div class="metrics" title="${tokenTitle([run])}"><b>${fmtTok(work(run))}</b>${compact?'':context}</div>${expanded.has(key)?breakdown([run]):''}</div>`;
+ return `<div class="row ${compact?'compact':''}"><div class="info"><div class="l1">${expander(key)}<span class="title" title="${esc(hint)}">${esc(title)}</span><button class="rename" data-rename="${esc(run.id)}" data-name="${esc(title)}" title="Rename on this dashboard" aria-label="Rename ${esc(title)}">✎</button><button class="rename" data-hide="${esc(run.id)}" data-to="${run.hidden?'':'1'}" title="${run.hidden?'Put this session back in the list':'Move this session to the Hidden section'}">${run.hidden?'Show':'Hide'}</button></div><div class="l2"><span class="pill ${run.status}"><i></i>${STATUS_LABEL[run.status]}</span>${chipSpan(chip(run))}${compact?'':`<span data-since="${run.start}"></span>`}${etaSpan(run)}</div>${liveLine(run)}</div>${laneCanvas([run])}<div class="metrics" title="${tokenTitle([run])}"><b>${fmtTok(work(run))}</b>${compact?'':context}</div>${expanded.has(key)?breakdown([run]):''}</div>`;
 }
 
 const group=(label,count)=>`<div class="group">${label}<span>${count}</span></div>`;
@@ -410,6 +412,11 @@ function tick(){
  const now=nowSec();
  $('clock').textContent=new Date().toLocaleTimeString([],{hour12:false});
  for(const el of document.querySelectorAll('[data-since]'))el.textContent=fmtDur(now-Number(el.dataset.since),'fine' in el.dataset);
+ for(const el of document.querySelectorAll('[data-due]')){
+  const left=Number(el.dataset.due)-now;
+  el.textContent=`ETA ${fmtDur(Number(el.dataset.min)*60)} · ${fmtDur(Math.abs(left))} ${left>=0?'left':'over'}`;
+  el.classList.toggle('late',left<0);
+ }
  for(const el of document.querySelectorAll('[data-until]'))el.textContent=fmtDur(Number(el.dataset.until)-now);
  draw();
 }

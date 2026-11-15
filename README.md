@@ -148,6 +148,14 @@ To give one your own name, use the pencil beside it in the Sessions list: type, 
 - A name given here wins over the one in the transcript.
 - With several machines, a name you give to another machine's session is stored on the machine you look at.
 
+## Estimates
+
+An agent can say how long it expects its run to take by printing a line of its own that starts with `ETA:`, such as `ETA: 30 min` or `ETA: 1.5 h`. The dashboard then shows the estimate beside the running agent and counts it down: `ETA 30m · 12m left`, or `8m over` once it has passed.
+
+- The number is the agent's own. The dashboard does not forecast anything, and a run that printed no such line shows none.
+- The latest line wins, counted from when it was printed. A new request to the same session clears it.
+- `/setup-monitor` adds the instruction to the conventions it writes, so agents that read them print the line.
+
 ## Tool calls
 
 ![An expanded task with its time split, cost and a table of tool statistics](docs/screenshots/task.png)
