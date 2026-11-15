@@ -332,31 +332,42 @@ function fillTools(){
  }
 }
 
+// The stretch of time the timeline shows: the chosen window up to now, or the stretch the viewer dragged out.
+let zoom=null;
+const timeRange=(now=nowSec())=>zoom??{from:now-windowHours*3600,to:now};
+const fmtClockFine=s=>new Date(s*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+function setZoom(range){
+ zoom=range;
+ const reset=$('zoom-reset'),fine=range&&range.to-range.from<900?fmtClockFine:fmtClock;
+ reset.hidden=!range;
+ if(range)reset.textContent=`${fine(range.from)}–${fine(range.to)} · reset zoom`;
+ draw();
+}
 function laneHit(event,canvas){
  if(!canvas._items||!snap)return null;
- const box=canvas.getBoundingClientRect(),now=nowSec(),from=now-windowHours*3600;
- const t=from+(event.clientX-box.left)/box.width*(now-from),lane=Math.floor((event.clientY-box.top-PAD+LANE_GAP/2)/(LANE+LANE_GAP));
+ const box=canvas.getBoundingClientRect(),now=nowSec(),{from,to}=timeRange(now);
+ const t=from+(event.clientX-box.left)/box.width*(to-from),lane=Math.floor((event.clientY-box.top-PAD+LANE_GAP/2)/(LANE+LANE_GAP));
  const hit=canvas._items.find(item=>item.lane===lane&&t>=item.run.start&&t<=(item.run.end||now))??canvas._items.find(item=>t>=item.run.start&&t<=(item.run.end||now));
- return hit?{run:hit.run,t,now,from,box}:null;
+ return hit?{run:hit.run,t,now,from,to,box}:null;
 }
 
 /* ---------- timeline drawing ---------- */
 
 const runById=()=>new Map(snap.runs.map(run=>[run.id,run]));
 function ticks(from,now){
- const step={1:600,3:1800,6:3600,12:7200,24:14400}[windowHours]??3600,out=[];
+ const step=zoom?[5,10,30,60,120,300,600,1800,3600,7200,14400].find(size=>(now-from)/size<=8)??14400:{1:600,3:1800,6:3600,12:7200,24:14400}[windowHours]??3600,out=[];
  const offset=new Date().getTimezoneOffset()*60;
  for(let t=Math.ceil((from-offset)/step)*step+offset;t<now;t+=step)out.push(t);
  return out;
 }
 
-function drawLane(canvas,index,now,from){
+function drawLane(canvas,index,now,from,to){
  const items=lanes(canvas.dataset.runs.split(',').filter(Boolean).map(id=>index.get(id)).filter(Boolean));
  const laneCount=Number(canvas.dataset.lanes)||1;
  const {ctx,width,height}=setupCanvas(canvas,PAD*2+laneCount*LANE+(laneCount-1)*LANE_GAP);
- const x=t=>(t-from)/(now-from)*width;
+ const x=t=>(t-from)/(to-from)*width;
  ctx.fillStyle=colors.line;
- for(const t of ticks(from,now))ctx.fillRect(Math.round(x(t)),0,1,height);
+ for(const t of ticks(from,to))ctx.fillRect(Math.round(x(t)),0,1,height);
  for(const {run,lane} of items){
   const top=PAD+lane*(LANE+LANE_GAP),start=Math.max(0,x(run.start)),end=Math.min(width,x(run.end||now));
   if(end<=0)continue;
@@ -377,7 +388,7 @@ function drawLane(canvas,index,now,from){
 
 function drawAxis(v){
  const {ctx,width,height}=setupCanvas($('axis'),46);
- const {now,from}=v,x=t=>(t-from)/(now-from)*width;
+ const {now}=v,{from,to}=timeRange(now),x=t=>(t-from)/(to-from)*width,label=zoom&&to-from<900?fmtClockFine:fmtClock;
  const slots=Math.max(1,Math.floor(width/3)),diff=new Float32Array(slots+1);
  for(const run of v.runs){
   let covered=0;
@@ -397,20 +408,20 @@ function drawAxis(v){
  ctx.fillStyle=colors.text3;
  ctx.fillText(`agents active · peak ${Math.max(0,...counts)}`,0,0);
  ctx.textAlign='center';
- for(const t of ticks(from,now)){
+ for(const t of ticks(from,to)){
   const tx=x(t);
   ctx.fillStyle=colors.line;ctx.fillRect(Math.round(tx),areaHeight,1,height-areaHeight);
-  if(tx>20&&tx<width-20){ctx.fillStyle=colors.text3;ctx.fillText(fmtClock(t),tx,areaHeight+5);}
+  if(tx>20&&tx<width-20){ctx.fillStyle=colors.text3;ctx.fillText(label(t),tx,areaHeight+5);}
  }
- ctx.textAlign='right';ctx.fillStyle=colors.text2;ctx.fillText('now',width,areaHeight+5);
+ if(!zoom){ctx.textAlign='right';ctx.fillStyle=colors.text2;ctx.fillText('now',width,areaHeight+5);}
  ctx.textAlign='left';
 }
 
 function draw(){
  if(!snap)return;
- const v=view(),index=runById();
+ const v=view(),index=runById(),range=timeRange(v.now);
  drawAxis(v);
- for(const canvas of document.querySelectorAll('canvas.lane'))drawLane(canvas,index,v.now,v.from);
+ for(const canvas of document.querySelectorAll('canvas.lane'))drawLane(canvas,index,v.now,range.from,range.to);
  drawBurn(v);
 }
 
@@ -777,7 +788,7 @@ document.addEventListener('mousemove',event=>{
  const hit=canvas&&laneHit(event,canvas);
  if(!hit){tip.hidden=true;return;}
  const {run,t,now,from,box}=hit,seg=run.segs.find(([s,e])=>t>=s&&t<=(e||now));
- const secondsPerPixel=(now-from)/box.width,mark=run.marks.find(([at])=>Math.abs(at-t)<4*secondsPerPixel);
+ const secondsPerPixel=(hit.to-from)/box.width,mark=run.marks.find(([at])=>Math.abs(at-t)<4*secondsPerPixel);
  const lines=[`<b>${esc(run.title||chip(run))}</b>`,`<span>${esc(chip(run))}</span>`];
  if(seg){const cat=snap.cats[seg[2]],end=seg[1]||now;lines.push(`<span><i class="dot" style="--c:var(--cat-${cat})"></i>${CAT_LABEL[cat]} · ${fmtClock(seg[0])}–${seg[1]?fmtClock(end):'now'} · ${fmtDur(end-seg[0],true)}</span>`);if(!seg[1]&&run.label)lines.push(`<span>${esc(run.label)}</span>`);}
  if(mark)lines.push(`<span>${MARK_LABEL[mark[1]]} at ${fmtClock(mark[0])}</span>`);
@@ -799,7 +810,7 @@ function renderWindow(){
 $('window').addEventListener('click',event=>{
  const hours=Number(event.target.dataset?.hours);
  if(!hours)return;
- windowHours=hours;localStorage.setItem('window',hours);
+ windowHours=hours;localStorage.setItem('window',hours);zoom=null;$('zoom-reset').hidden=true;
  renderWindow();render();
 });
 
@@ -850,4 +861,41 @@ addEventListener('resize',draw);
   if(!step)return;
   event.preventDefault();setWidth(current()+step);save();
  });
+}
+
+// Dragging across the timeline zooms every lane to that stretch, as a profiler does. Double-click, Escape or the chip goes back.
+{
+ const band=document.createElement('div');
+ band.id='zoom-band';band.hidden=true;document.body.append(band);
+ let drag=null,swallow=false;
+ document.addEventListener('pointerdown',event=>{
+  const canvas=event.target.closest?.('canvas.lane,#axis');
+  if(!canvas||event.button!==0||event.pointerType==='touch')return;
+  const box=canvas.getBoundingClientRect();
+  drag={x0:event.clientX,left:box.left,width:box.width,active:false,range:timeRange()};
+ });
+ document.addEventListener('pointermove',event=>{
+  if(!drag||(!drag.active&&Math.abs(event.clientX-drag.x0)<6))return;
+  drag.active=true;
+  const board=document.querySelector('.board').getBoundingClientRect(),top=Math.max(0,board.top);
+  drag.a=Math.max(drag.left,Math.min(drag.x0,event.clientX));
+  drag.b=Math.min(drag.left+drag.width,Math.max(drag.x0,event.clientX));
+  Object.assign(band.style,{left:`${drag.a}px`,width:`${Math.max(0,drag.b-drag.a)}px`,top:`${top}px`,height:`${Math.max(0,Math.min(innerHeight,board.bottom)-top)}px`});
+  band.hidden=false;$('tip').hidden=true;
+ });
+ document.addEventListener('pointerup',()=>{
+  if(!drag)return;
+  const {active,a,b,left,width,range}=drag;
+  drag=null;band.hidden=true;
+  if(!active)return;
+  // The click that ends a drag is not a click on a segment.
+  swallow=true;setTimeout(()=>{swallow=false;},0);
+  const at=x=>range.from+(x-left)/width*(range.to-range.from);
+  if(at(b)-at(a)>=2)setZoom({from:at(a),to:at(b)});
+ });
+ document.addEventListener('pointercancel',()=>{drag=null;band.hidden=true;});
+ document.addEventListener('click',event=>{if(swallow){event.stopImmediatePropagation();event.preventDefault();}},true);
+ document.addEventListener('dblclick',event=>{if(zoom&&event.target.closest?.('canvas.lane,#axis'))setZoom(null);});
+ addEventListener('keydown',event=>{if(event.key==='Escape'&&zoom&&$('panel').hidden)setZoom(null);});
+ $('zoom-reset').addEventListener('click',()=>setZoom(null));
 }

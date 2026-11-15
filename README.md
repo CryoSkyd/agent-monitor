@@ -176,6 +176,8 @@ Each kind of agent has one adapter file in `lib/agents/`, listed in `lib/agents/
 
 ## Tool calls
 
+To look closely at part of a timeline, drag across it. Every lane zooms to that stretch, and you can drag again to go further in. Double-click the timeline, press Escape, or use the chip under the time axis to zoom back out.
+
 ![An expanded task with its time split, cost and a table of tool statistics](docs/screenshots/task.png)
 
 ![The side panel showing one tool call with its input and output](docs/screenshots/call.png)
