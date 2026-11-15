@@ -304,6 +304,13 @@ test('a Claude turn that ends while its background test is running counts as tes
  assert.deepEqual(cats(tests),['thinking:5','testing:1','thinking:4','testing:60','thinking:5']);
  assert.deepEqual(tests.waited,{n:1,ms:60000});
  assert.equal(tests.tl.cur.c,'idle');
+ // A command that ends while the agent is busy is reported as a queued notice, and later turn ends are not waits for it.
+ const early=lines('node --test tests/a.test.ts');
+ early.splice(3,0,{type:'attachment',timestamp:at(8),attachment:{type:'queued_command',prompt:'<task-notification><task-id>b123</task-id><status>completed</status></task-notification>'}});
+ const busy=new ClaudeRun(transcript(early),shared(),{id:'s'});
+ busy.poll();
+ assert.equal(busy.waited.n,0);
+ assert.ok(cats(busy).includes('idle:60'));
  // A background server never ends, so only builds and tests are waited for.
  const server=read('node server.mjs');
  assert.equal(server.waited.n,0);
