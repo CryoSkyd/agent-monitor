@@ -14,7 +14,16 @@ import {parseCard} from '../lib/cards.mjs';
 import {LimitHistory} from '../lib/forecast.mjs';
 import {splitDiff} from '../lib/github.mjs';
 import {TOOL_STALE} from '../lib/run.mjs';
-import {ClaudeRun,claudeWindow} from '../lib/agents/claude.mjs';
+import {ClaudeRun,claudeWindow,parseUsage} from '../lib/agents/claude.mjs';
+
+test('the plan limit lines of /usage are read with their reset times',()=>{
+ const text='You are currently using your subscription\n\nCurrent session: 12% used · resets Nov 20, 9pm (America/Los_Angeles)\nCurrent week (all models): 55% used · resets Nov 23, 10:59pm (America/Los_Angeles)\nCurrent week (Fable): 17% used · resets Jan 2, 11pm (UTC)\n\nLast 24h · 4762 requests';
+ assert.deepEqual(parseUsage(text,Date.UTC(2026,10,20)),{
+  five_hour:{used_percentage:12,resets_at:Date.UTC(2026,10,21,5)/1000},
+  seven_day:{used_percentage:55,resets_at:Date.UTC(2026,10,24,6,59)/1000},
+  seven_day_fable:{used_percentage:17,resets_at:Date.UTC(2027,0,2,23)/1000}});
+ assert.equal(parseUsage('Not logged in'),null);
+});
 import {CodexRun} from '../lib/agents/codex.mjs';
 import {apply,plan} from '../lib/setup.mjs';
 import {CATS} from '../lib/timeline.mjs';

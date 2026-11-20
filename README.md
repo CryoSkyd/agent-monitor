@@ -107,6 +107,7 @@ A JSON file; only `project` is required.
 | `tasksDir` | `docs/tasks`, `tasks` or `.tasks` if present | Task cards, relative to the project |
 | `hours` | 24 | How far back transcripts are loaded |
 | `limitWarn` | 80 | Usage-limit percentage that turns the meter to a warning |
+| `claudeUsagePoll` | off | Minutes between asking the Claude CLI for plan limits (see Claude usage limits) |
 | `testPattern` | | Extra regular expression for commands that count as testing or building |
 | `prices` | Claude and OpenAI list prices | Dollars per million tokens by model, for the cost estimate: `{"gpt-6": {"in": 2, "out": 10, "cached": 0.2}}`. Keys match as substrings of the model id |
 | `github` | true | Poll pull requests with `gh` |
@@ -228,7 +229,7 @@ The page shows prompts, commands, tool output and diffs. Prefer Cloudflare Acces
 - An unattended Codex run is shown as stopped much sooner when it is inside a command: one minute past the wait the command names, or after two minutes when it names none. Codex commands hand control back after that wait and leave long work running in the background, so a command still open past it means the agent was killed. Claude calls and interactive Codex sessions keep the two hours, because they can be waiting for an approval or a subagent.
 - CPU is for the whole machine, not per agent.
 - Cost is an estimate at API list prices, shown as a tooltip on token counts. It is not what a subscription plan charges. Models with no price set show no estimate; add them under `prices`.
-- Claude usage limits are not in the transcripts. They appear once the status line helper is installed (below).
+- Claude usage limits are not in the transcripts. They appear once the status line helper is installed or the CLI poll is turned on (below).
 - Agents that leave no local transcript (cloud runs) appear through their card and PR only.
 
 ## Claude usage limits
@@ -240,6 +241,8 @@ Claude Code passes plan limits (5-hour and 7-day windows) only to a status line 
 ```
 
 The file is refreshed while a terminal `claude` session is open; the limits are for the whole account, so one open session is enough.
+
+Agents run without a terminal (headless runs, the desktop app) draw no status line, so the file goes stale. To keep readings coming, set `"claudeUsagePoll": 10` in the config. The monitor then runs `claude -p /usage` every that many minutes and reads the plan limit lines from its output, including per-model weekly limits. The call runs no model and spends no tokens, but it does ask the usage service, which limits how often it answers, so keep the interval at several minutes. It needs `claude` on the PATH and signed in. The lines are text written for people: if a CLI update rewords them, the readings stop until the parser is updated.
 
 ## Tests
 

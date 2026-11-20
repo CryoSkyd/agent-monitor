@@ -40,7 +40,7 @@ When agents for one project run on more than one computer, each runs its own mon
 
 ## Project settings
 
-Optional. A `.agent-monitor.json` in the project folder is read automatically; a config file anywhere can be passed in place of the folder. Keys: `name`, `tasksDir`, `hours`, `limitWarn`, `testPattern`, `github`, `port`. Write one only when a default is wrong for the project, most often `testPattern`: a regular expression for the project's own test and build commands, so they show as testing instead of a plain command.
+Optional. A `.agent-monitor.json` in the project folder is read automatically; a config file anywhere can be passed in place of the folder. Keys: `name`, `tasksDir`, `hours`, `limitWarn`, `claudeUsagePoll`, `testPattern`, `github`, `port`. Write one only when a default is wrong for the project, most often `testPattern`: a regular expression for the project's own test and build commands, so they show as testing instead of a plain command.
 
 ## Making a project ready
 
