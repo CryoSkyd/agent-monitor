@@ -54,7 +54,7 @@ a{color:inherit}
 .big small{font-size:14px;font-weight:400;color:var(--text-3)}
 .big .warn{font-size:11px;font-style:normal;font-weight:600;color:var(--warning);margin-left:auto}
 .tile p{margin-top:auto}
-.spark{width:100%;height:30px;display:block}
+.spark{width:100%;flex:1 1 0;min-height:30px;display:block}
 .meter{height:6px;border-radius:3px;background:var(--track);overflow:hidden}
 .meter i{display:block;height:100%;border-radius:3px;background:var(--accent);transition:width .6s}
 .meter.hot i{background:var(--warning)}
@@ -100,7 +100,7 @@ a{color:inherit}
 .limit em{font-style:normal;color:var(--text-3)}
 .limit em span{color:inherit}
 .limit p{grid-column:1/3;font-weight:600}
-.limit p.burn{font-weight:400;color:var(--text-3)}
+.limit b small{font-weight:400;color:var(--text-3)}
 .window .lbl{padding:3px 2px 3px 10px;color:var(--text-3);font-size:12px}
 .ctx{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .ctx .meter{width:60px;height:4px}

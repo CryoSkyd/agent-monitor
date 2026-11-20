@@ -101,14 +101,18 @@ function renderTiles(v){
  $('tokens-sub').textContent=`+ ${fmtTok(cached)} cached${cacheRate(v.runs)==null?'':` · cache hit ${cacheRate(v.runs)}%`} · last ${windowHours}h`;
 
  const warn=snap.config.limitWarn;
- setHtml('limits',snap.limits.flatMap(limit=>limit.windows.map(window=>{
-  const early=window.early&&window.fullAt>v.now,hot=window.used>=warn||early;
+ const hotLimit=window=>window.used>=warn||(window.early&&window.fullAt>v.now);
+ // A limit for one model ("week fable") folds into the tooltip of the limit it narrows ("week") until it runs hot.
+ const widerLimit=(limit,window)=>limit.windows.find(other=>other!==window&&window.label.startsWith(`${other.label} `));
+ setHtml('limits',snap.limits.flatMap(limit=>limit.windows.filter(window=>!widerLimit(limit,window)||hotLimit(window)).map(window=>{
+  const early=window.early&&window.fullAt>v.now,hot=hotLimit(window);
+  const folded=limit.windows.filter(other=>widerLimit(limit,other)===window&&!hotLimit(other)).map(other=>`${other.label} ${Math.round(other.used)}%`);
   const reset=window.resetsAt>v.now*1000?Math.round(window.resetsAt/1000):0;
   const burn=window.burn?.[windowHours];
   // Where an even pace would be by now: time passed over the length of the limit's window.
   const pace=window.minutes&&reset?Math.min(100,Math.max(0,(1-(reset-v.now)/(window.minutes*60))*100)):null;
-  const title=[limit.plan?`${limit.plan} plan`:'',`read ${fmtClock(limit.asOf/1000)}`,window.rate?`rising ${window.rate}% per hour`:'',pace==null?'':`an even pace would be at ${Math.round(pace)}% by now`,reset?`resets ${new Date(reset*1000).toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false})}`:''].filter(Boolean).join(' · ');
-  return `<div class="limit" title="${esc(title)}"><span>${esc(limit.account)} <em>${esc(window.label)}${reset?` · <span data-until="${reset}"></span> left`:''}</em></span><b class="${hot?'hot':''}">${hot?'▲ ':''}${Math.round(window.used)}%</b><div class="meter ${hot?'hot':''}">${pace==null?'':`<s style="width:${pace}%"></s>`}<i style="width:${Math.min(100,window.used)}%"></i></div>${burn==null?'':`<p class="burn">+${burn}% in last ${windowHours}h · ${Math.round(burn/windowHours*10)/10}%/h</p>`}${early?`<p class="hot">full in <span data-until="${window.fullAt}"></span> at this rate</p>`:''}</div>`;
+  const title=[limit.plan?`${limit.plan} plan`:'',`read ${fmtClock(limit.asOf/1000)}`,...folded,burn==null?'':`+${burn}% in last ${windowHours}h`,window.rate?`rising ${window.rate}% per hour`:'',pace==null?'':`an even pace would be at ${Math.round(pace)}% by now`,reset?`resets ${new Date(reset*1000).toLocaleString([],{weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false})}`:''].filter(Boolean).join(' · ');
+  return `<div class="limit" title="${esc(title)}"><span>${esc(limit.account)} <em>${esc(window.label)}${reset?` · <span data-until="${reset}"></span> left`:''}</em></span><b class="${hot?'hot':''}">${hot?'▲ ':''}${Math.round(window.used)}%${burn>0?` <small>(+${Math.max(.1,Math.round(burn/windowHours*10)/10)}%/h)</small>`:''}</b><div class="meter ${hot?'hot':''}">${pace==null?'':`<s style="width:${pace}%"></s>`}<i style="width:${Math.min(100,window.used)}%"></i></div>${early?`<p class="hot">full in <span data-until="${window.fullAt}"></span> at this rate</p>`:''}</div>`;
  })).join('')||'<p>No limit data in the window</p>');
 
  const count=phases=>snap.tasks.filter(task=>phases.includes(task.phase)).length;
