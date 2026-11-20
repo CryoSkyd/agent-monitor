@@ -58,6 +58,10 @@ a{color:inherit}
 .meter{height:6px;border-radius:3px;background:var(--track);overflow:hidden}
 .meter i{display:block;height:100%;border-radius:3px;background:var(--accent);transition:width .6s}
 .meter.hot i{background:var(--warning)}
+.meter{position:relative}
+.meter i{position:relative}
+.meter s{position:absolute;inset:0 auto 0 0;background:color-mix(in srgb,var(--text-3) 45%,transparent)}
+.meter s::after{content:"";position:absolute;inset:0 0 0 auto;width:2px;background:var(--text);z-index:1}
 .tile.many>.big,.tile.many>.meter,.tile.many #mem-sub,.tile:not(.many) .cpu-legend,.tile:not(.many) .mem-rows,.tile:not(.many) .mem-rows+.snap-dots{display:none}
 .eta{white-space:nowrap}
 .eta.late{color:var(--warning)}
@@ -96,6 +100,7 @@ a{color:inherit}
 .limit em{font-style:normal;color:var(--text-3)}
 .limit em span{color:inherit}
 .limit p{grid-column:1/3;font-weight:600}
+.limit p.burn{font-weight:400;color:var(--text-3)}
 .window .lbl{padding:3px 2px 3px 10px;color:var(--text-3);font-size:12px}
 .ctx{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .ctx .meter{width:60px;height:4px}

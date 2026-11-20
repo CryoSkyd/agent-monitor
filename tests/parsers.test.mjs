@@ -117,6 +117,9 @@ test('a limit trend measures the rise since the latest reset and goes quiet with
  assert.equal(trend.used,16);
  assert.equal(history.trend('codex','5h',start+90*minute),null);
  assert.equal(history.trend('codex','week',start+55*minute),null);
+ assert.equal(history.rise('codex','5h',start,start+55*minute),21);
+ assert.equal(history.rise('codex','5h',start+25*minute,start+55*minute),8);
+ assert.equal(history.rise('codex','5h',start+60*minute,start+90*minute),null);
 });
 
 test('a diff splits into files with their hunks, and long files are cut',()=>{

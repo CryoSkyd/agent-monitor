@@ -129,7 +129,7 @@ Transcripts are tailed: each poll (every 2 seconds) stats the known files and pa
 
 - **Context**: each live agent shows how full its context window is, with a count of compactions. Compactions are also marked on the timeline.
 - **Going in circles**: a live agent is flagged when it makes the same tool call three or more times in a row, when half of its last ten tool calls failed, or when a quarter of its file reads repeat an earlier read.
-- **Limit forecast**: each usage limit shows the time left until it resets. When the last hour's rise would fill it before the reset, it shows the time until full.
+- **Limit forecast**: each usage limit shows the time left until it resets. When the last hour's rise would fill it before the reset, it shows the time until full. Under each meter is how much of the limit was used in the time window picked in the header, with the rate per hour. A grey bar with a marker behind the meter shows an even pace: the share of the limit's own window that has passed. Usage past the marker is running ahead of that pace.
 - **Whole-task rollup**: expanding a task shows its runs, reviews, working time, tokens and estimated cost across every loaded run.
 - **Alerts**: the Alerts switch in the header raises a browser notification, and optionally a sound, when a task starts needing you, an agent stops responding or trips a warning, or a limit passes `limitWarn` or is forecast to fill early. Alerts also show on the page, so they work when notifications are blocked.
 
